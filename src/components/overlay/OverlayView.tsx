@@ -12,6 +12,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -22,11 +23,13 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       const cleanupCapture = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
         console.log('Overlay: global capture received');
         setPendingAttachments(prev => [...prev, dataUrl]);
+        setIsCapturing(false);
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
         console.error('Overlay: capture error:', msg);
         setError(msg);
+        setIsCapturing(false);
         setTimeout(() => setError(null), 3000);
       });
 
@@ -57,6 +60,9 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     setInput('');
     setPendingAttachments([]);
     setIsStreaming(true);
+
+    const providerModel = settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel;
+    console.log(`Overlay: sending message using model: ${providerModel} (Provider: ${settings.provider})`);
 
     const provider = settings.provider === ProviderType.GEMINI ? new GeminiProvider() : new OllamaProvider();
     let assistantContent = "";
@@ -100,6 +106,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
 
   const handleGlobalCapture = () => {
     console.log('Overlay: global capture triggered');
+    setIsCapturing(true);
     window.electron?.ipcRenderer.send('start-capture');
   };
 
@@ -134,6 +141,15 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         onChange={handleFileChange} 
         className="hidden" 
       />
+      
+      {isCapturing && (
+        <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200 no-drag">
+          <div className="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4" />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Capturing Desktop...</p>
+          <p className="text-[8px] text-zinc-500 mt-2">Wait for the selection overlay to appear</p>
+        </div>
+      )}
+
       <header className="h-12 flex items-center px-4 gap-3 bg-zinc-950 border-b border-zinc-800">
         <div className="w-4 h-4 rounded bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <Sparkles className="w-2.5 h-2.5 text-white" />

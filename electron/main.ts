@@ -230,6 +230,7 @@ ipcMain.on('start-capture', async () => {
       selectionWindow.webContents.send('set-capture-bg', bgImage);
       selectionWindow.show();
       selectionWindow.focus();
+      selectionWindow.setAlwaysOnTop(true, 'screen-saver');
     } else {
       console.log('Capture: creating new selection window');
       createSelectionWindow();
@@ -242,6 +243,7 @@ ipcMain.on('start-capture', async () => {
         console.log('Capture: selection window ready to show');
         win?.show();
         win?.focus();
+        win?.setAlwaysOnTop(true, 'screen-saver');
       });
     }
 

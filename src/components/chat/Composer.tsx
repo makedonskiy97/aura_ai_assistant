@@ -13,6 +13,7 @@ interface ComposerProps {
 export default function Composer({ onSend, isStreaming, attachedFiles = [] }: ComposerProps) {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
+  const [isCapturing, setIsCapturing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -24,8 +25,17 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
           type: 'image/png',
           size: 0
         }]);
+        setIsCapturing(false);
       });
-      return () => cleanup();
+
+      const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
+        setIsCapturing(false);
+      });
+
+      return () => {
+        cleanup();
+        cleanupError();
+      };
     }
   }, []);
 
@@ -48,6 +58,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
 
   const handleGlobalCapture = () => {
     if (window.electron) {
+      setIsCapturing(true);
       window.electron.ipcRenderer.send('start-capture');
     }
   };
@@ -57,7 +68,13 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   };
 
   return (
-    <div className="p-6 bg-zinc-950">
+    <div className="p-6 bg-zinc-950 relative">
+      {isCapturing && (
+        <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200">
+          <div className="w-10 h-10 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3" />
+          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Capturing Desktop...</p>
+        </div>
+      )}
       <div className="max-w-4xl mx-auto flex flex-col gap-2">
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 p-2 rounded-xl bg-zinc-900 border border-zinc-800">
