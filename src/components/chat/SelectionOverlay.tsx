@@ -61,16 +61,24 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   return (
     <div 
-      className="fixed inset-0 z-[99999] cursor-crosshair overflow-hidden select-none"
+      className="fixed inset-0 z-[99999] cursor-crosshair overflow-hidden select-none bg-black/10"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {backgroundImage && (
         <div 
-          className="absolute inset-0 grayscale-[0.3] opacity-40 bg-cover bg-center"
-          style={{ backgroundImage: `url(${backgroundImage})` }}
+          className="absolute inset-0 pointer-events-none"
+          style={{ 
+            backgroundImage: `url(${backgroundImage})`,
+            backgroundSize: '100% 100%'
+          }}
         />
+      )}
+
+      {/* Dimmed overlay */}
+      {!rect && (
+         <div className="absolute inset-0 bg-black/30 pointer-events-none" />
       )}
 
       <div className="absolute top-12 left-1/2 -translate-x-1/2 px-6 py-3 bg-zinc-950/90 backdrop-blur-xl border border-zinc-800 rounded-2xl text-white text-xs font-bold uppercase tracking-[0.2em] shadow-2xl flex items-center gap-4 pointer-events-none z-[100001]">
@@ -78,15 +86,15 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
           <Crop className="w-4 h-4" />
         </div>
         <div className="flex flex-col">
-          <span>Click and drag to capture</span>
-          <span className="text-[10px] text-zinc-500 font-medium tracking-normal normal-case">ESC to discard</span>
+          <span>Desktop Region Capture</span>
+          <span className="text-[10px] text-zinc-500 font-medium tracking-normal normal-case">Drag to select • ESC to cancel</span>
         </div>
       </div>
 
       <AnimatePresence>
         {rect && (
           <div 
-            className="absolute border-2 border-indigo-500 shadow-[0_0_0_100vmax_rgba(0,0,0,0.6)] z-[100000]"
+            className="absolute border-2 border-indigo-500 shadow-[0_0_0_100vmax_rgba(0,0,0,0.5)] z-[100000]"
             style={{
               left: rect.x,
               top: rect.y,
@@ -96,12 +104,11 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
           >
             {backgroundImage && (
               <div 
-                className="absolute inset-0 bg-cover"
+                className="absolute inset-0 bg-no-repeat pointer-events-none"
                 style={{ 
                   backgroundImage: `url(${backgroundImage})`,
                   backgroundPosition: `-${rect.x}px -${rect.y}px`,
                   backgroundSize: `${window.innerWidth}px ${window.innerHeight}px`,
-                  backgroundRepeat: 'no-repeat'
                 }}
               />
             )}
@@ -123,12 +130,13 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
                   onMouseDown={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation();
+                    console.log('Capture: triggering crop', rect);
                     onCapture(rect);
                   }}
                   className="px-6 py-2 bg-indigo-600 rounded-xl text-white hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-500/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2"
                 >
                   <Check className="w-3 h-3" />
-                  Capture Region
+                  Confirm Capture
                 </button>
               </div>
             )}

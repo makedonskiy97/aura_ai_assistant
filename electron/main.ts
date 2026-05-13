@@ -173,52 +173,77 @@ ipcMain.handle('capture-screen', async () => {
 });
 
 ipcMain.on('toggle-overlay', () => {
+  console.log('IPC: toggle-overlay');
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     if (overlayWindow.isVisible()) {
+      console.log('Overlay: hiding');
       overlayWindow.hide();
     } else {
+      console.log('Overlay: showing');
       overlayWindow.show();
+      overlayWindow.focus();
     }
   } else {
+    console.log('Overlay: creating new');
     createOverlayWindow();
   }
 });
 
 ipcMain.on('start-capture', async () => {
-  // Hide windows to capture what's behind
-  const wasMainVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
-  const wasOverlayVisible = overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible();
-  
-  if (wasMainVisible) mainWindow?.hide();
-  if (wasOverlayVisible) overlayWindow?.hide();
+  console.log('Capture: start sequence');
+  try {
+    // Hide windows to capture what's behind
+    const wasMainVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+    const wasOverlayVisible = overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible();
+    
+    if (wasMainVisible) mainWindow?.hide();
+    if (wasOverlayVisible) overlayWindow?.hide();
 
-  // Wait for windows to hide
-  await new Promise(resolve => setTimeout(resolve, 150));
+    // Wait bit longer for windows to hide completely to avoid flicker or ghosting
+    await new Promise(resolve => setTimeout(resolve, 250));
 
-  const sources = await desktopCapturer.getSources({ 
-    types: ['screen'], 
-    thumbnailSize: screen.getPrimaryDisplay().size 
-  });
-  
-  const bgImage = sources[0].thumbnail.toDataURL();
-
-  if (selectionWindow && !selectionWindow.isDestroyed()) {
-    selectionWindow.webContents.send('set-capture-bg', bgImage);
-    selectionWindow.show();
-  } else {
-    createSelectionWindow();
-    selectionWindow?.once('ready-to-show', () => {
-      selectionWindow?.webContents.send('set-capture-bg', bgImage);
-      selectionWindow?.show();
+    const sources = await desktopCapturer.getSources({ 
+      types: ['screen'], 
+      thumbnailSize: screen.getPrimaryDisplay().size 
     });
-  }
+    
+    if (sources.length === 0) throw new Error('No screen capture sources found');
+    
+    const bgImage = sources[0].thumbnail.toDataURL();
+    console.log('Capture: screenshot taken');
 
-  // Restore windows
-  if (wasMainVisible) mainWindow?.show();
-  if (wasOverlayVisible) overlayWindow?.show();
+    if (selectionWindow && !selectionWindow.isDestroyed()) {
+      selectionWindow.webContents.send('set-capture-bg', bgImage);
+      selectionWindow.show();
+      selectionWindow.focus();
+    } else {
+      createSelectionWindow();
+      selectionWindow?.once('ready-to-show', () => {
+        selectionWindow?.webContents.send('set-capture-bg', bgImage);
+        selectionWindow?.show();
+        selectionWindow?.focus();
+      });
+    }
+
+    // Restore windows immediately after triggering selection
+    if (wasMainVisible) mainWindow?.show();
+    if (wasOverlayVisible) {
+      overlayWindow?.show();
+      overlayWindow?.focus();
+    }
+  } catch (err) {
+    console.error('Capture: failed during initialization', err);
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('capture-error', 'Failed to start screen capture');
+    }
+    if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.webContents.send('capture-error', 'Failed to start screen capture');
+    }
+  }
 });
 
 ipcMain.on('show-main-window', () => {
+  console.log('IPC: show-main-window');
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.show();
     mainWindow.focus();
@@ -228,17 +253,20 @@ ipcMain.on('show-main-window', () => {
 });
 
 ipcMain.on('close-selection', () => {
+  console.log('IPC: close-selection');
   if (selectionWindow && !selectionWindow.isDestroyed()) {
     selectionWindow.close();
   }
 });
 
 ipcMain.on('capture-result', (event, dataUrl) => {
+  console.log('Capture: complete, size:', dataUrl.length);
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('on-capture-complete', dataUrl);
   }
   if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.webContents.send('on-capture-complete', dataUrl);
+    overlayWindow.focus();
   }
   if (selectionWindow && !selectionWindow.isDestroyed()) {
     selectionWindow.close();
