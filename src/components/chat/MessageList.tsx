@@ -1,4 +1,4 @@
-import { Bot, User, Copy, Check } from 'lucide-react';
+import { Bot, User, Copy, Check, FileText, Timer, Cpu, Zap } from 'lucide-react';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Message } from '../../types';
@@ -110,14 +110,35 @@ function MessageItem({ message }: { message: Message }) {
           </div>
         )}
 
-        <div className="mt-2 flex gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button 
-            onClick={handleCopy}
-            className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-zinc-500 hover:text-zinc-200 transition-colors"
-          >
-            {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-            {copied ? 'Copied' : 'Copy Message'}
-          </button>
+        <div className="mt-3 flex items-center justify-between opacity-40 group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={handleCopy}
+              className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-200 transition-colors"
+            >
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            
+            {isAssistant && message.metrics && (
+              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
+                 <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">
+                    <Timer className="w-3 h-3 text-zinc-600" />
+                    <span>{message.metrics.timeSeconds.toFixed(1)}s</span>
+                 </div>
+                 {message.metrics.tokensPerSecond && (
+                   <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">
+                      <Zap className="w-3 h-3 text-amber-500/50" />
+                      <span>{message.metrics.tokensPerSecond.toFixed(1)} tok/s</span>
+                   </div>
+                 )}
+              </div>
+            )}
+          </div>
+          
+          <div className="text-[9px] font-medium text-zinc-600 tabular-nums">
+             {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </div>
         </div>
       </div>
     </div>

@@ -9,6 +9,8 @@ interface ElectronAPI {
     on: (channel: string, func: (...args: any[]) => void) => (() => void);
   };
   captureScreen: () => Promise<string>;
+  readClipboardImage: () => Promise<string | null>;
+  getClipboardFormats: () => Promise<string[]>;
 }
 
 interface Window {

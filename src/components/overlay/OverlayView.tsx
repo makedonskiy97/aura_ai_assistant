@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare, Paperclip, ClipboardPaste } from 'lucide-react';
-import { Message, AppSettings, ProviderType } from '../../types';
+import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare, Paperclip, ClipboardPaste, Timer, Zap, FileText } from 'lucide-react';
+import { Message, AppSettings, ProviderType, FileContext } from '../../types';
 import { GeminiProvider, OllamaProvider } from '../../services/ai-providers';
 import SelectionOverlay from '../chat/SelectionOverlay';
+import { processFile } from '../../services/file-processor';
 
 interface OverlayViewProps {
   settings: AppSettings;
@@ -17,6 +18,8 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
@@ -69,6 +72,14 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   }, []);
 
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsStreaming(false);
+    }
+  };
+
   const handleSend = async () => {
     if ((!input.trim() && pendingAttachments.length === 0) || isStreaming) return;
 
@@ -88,9 +99,11 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     const currentAttachments = [...pendingAttachments];
     setPendingAttachments([]);
     setIsStreaming(true);
+    abortControllerRef.current = new AbortController();
 
     const provider = settings.provider === ProviderType.GEMINI ? new GeminiProvider() : new OllamaProvider();
     let assistantContent = "";
+    const startTime = Date.now();
     
     const assistantMessage: Message = {
       id: crypto.randomUUID(),
@@ -106,23 +119,53 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         model: providerModel,
         key: settings.geminiKey,
         url: settings.ollamaUrl,
-        files: currentAttachments
+        files: currentAttachments,
+        signal: abortControllerRef.current.signal
       });
 
       for await (const chunk of stream) {
         assistantContent += chunk;
         setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: assistantContent } : m));
       }
-    } catch (err: any) {
-      console.error('Overlay Error:', err);
+
+      const endTime = Date.now();
+      const durationSeconds = (endTime - startTime) / 1000;
+      const tokenCount = assistantContent.split(/\s+/).length;
+      const tokensPerSecond = tokenCount / durationSeconds;
+
       setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { 
         ...m, 
-        content: `Error: ${err.message || "Failed to get response"}`,
-        isError: true
+        content: assistantContent,
+        metrics: { timeSeconds: durationSeconds, tokensPerSecond }
       } : m));
+
+    } catch (err: any) {
+      if (err.name === 'AbortError' || err.message === 'Generation stopped by user') {
+         // Keep partial
+      } else {
+        console.error('Overlay Error:', err);
+        setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { 
+          ...m, 
+          content: assistantContent + `\n\n[Error: ${err.message || "Failed to get response"}]`,
+          isError: true
+        } : m));
+      }
     } finally {
       setIsStreaming(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  const handleGlobalCapture = () => {
+    if (window.electron) {
+      setIsCapturing(true);
+      setCapturePhase('preparing');
+      window.electron.ipcRenderer.send('start-capture');
+    }
+  };
+
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -284,6 +327,20 @@ export default function OverlayView({ settings }: OverlayViewProps) {
               : `${m.isError ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/10'}`
             }`}>
               {m.content}
+              {m.metrics && (
+                 <div className="mt-2 pt-2 border-t border-white/10 flex items-center gap-3 opacity-60 text-[9px] font-bold uppercase tracking-tighter tabular-nums">
+                    <div className="flex items-center gap-1">
+                      <Timer className="w-2.5 h-2.5" />
+                      <span>{m.metrics.timeSeconds.toFixed(1)}s</span>
+                    </div>
+                    {m.metrics.tokensPerSecond && (
+                      <div className="flex items-center gap-1">
+                        <Zap className="w-2.5 h-2.5" />
+                        <span>{m.metrics.tokensPerSecond.toFixed(0)} t/s</span>
+                      </div>
+                    )}
+                 </div>
+              )}
             </div>
           </div>
         ))}
@@ -362,13 +419,22 @@ export default function OverlayView({ settings }: OverlayViewProps) {
             placeholder="Type a quick question..."
             className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-8 pr-10 text-[11px] text-zinc-300 placeholder-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
           />
-          <button 
-            onClick={handleSend}
-            disabled={isStreaming || (!input.trim() && pendingAttachments.length === 0)}
-            className="absolute right-2 top-2.5 text-indigo-500 hover:text-indigo-400 disabled:opacity-30 transition-colors"
-          >
-            <Send className="w-3.5 h-3.5" />
-          </button>
+          {isStreaming ? (
+            <button 
+              onClick={handleStop}
+              className="absolute right-2 top-2.5 text-red-400 hover:text-red-300 animate-pulse"
+            >
+              <div className="w-3.5 h-3.5 bg-current rounded-sm"></div>
+            </button>
+          ) : (
+            <button 
+              onClick={handleSend}
+              disabled={isStreaming || (!input.trim() && pendingAttachments.length === 0)}
+              className="absolute right-2 top-2.5 text-indigo-500 hover:text-indigo-400 disabled:opacity-30 transition-colors"
+            >
+              <Send className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
         <div className="mt-3 flex gap-2">
           <button 

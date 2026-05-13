@@ -6,11 +6,12 @@ import SelectionOverlay from './SelectionOverlay';
 
 interface ComposerProps {
   onSend: (content: string, files: FileContext[]) => void;
+  onStop?: () => void;
   isStreaming: boolean;
   attachedFiles?: FileContext[];
 }
 
-export default function Composer({ onSend, isStreaming, attachedFiles = [] }: ComposerProps) {
+export default function Composer({ onSend, onStop, isStreaming, attachedFiles = [] }: ComposerProps) {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -141,7 +142,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' && target.type !== 'textarea') return;
+      if ((target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) && target.type !== 'textarea') return;
 
       const items = e.clipboardData?.items;
       if (items) {
@@ -248,30 +249,45 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
 
           <div className="absolute right-2 bottom-2 flex items-center justify-between w-full h-10 px-4 pointer-events-none">
             <div className="flex items-center gap-1 pointer-events-auto">
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Attach files"
-              >
-                <Paperclip className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={handleGlobalCapture}
-                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Capture screen region"
-              >
-                <Camera className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={handlePasteClipboard}
-                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Paste image from clipboard"
-              >
-                <ClipboardPaste className="w-5 h-5" />
-              </button>
+              {isStreaming ? (
+                <button
+                  type="button"
+                  onClick={onStop}
+                  className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg transition-all animate-pulse"
+                  title="Stop generation"
+                >
+                  <div className="w-5 h-5 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 bg-current rounded-sm"></div>
+                  </div>
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
+                    title="Attach files"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGlobalCapture}
+                    className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
+                    title="Capture screen region"
+                  >
+                    <Camera className="w-5 h-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handlePasteClipboard}
+                    className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
+                    title="Paste image from clipboard"
+                  >
+                    <ClipboardPaste className="w-5 h-5" />
+                  </button>
+                </>
+              )}
             </div>
             <button
               type="submit"

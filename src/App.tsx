@@ -78,6 +78,19 @@ export default function App() {
     setCurrentView('chat');
   };
 
+  const deleteSession = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this chat?')) return;
+    
+    const newSessions = sessions.filter(s => s.id !== id);
+    setSessions(newSessions);
+    if (activeSessionId === id) {
+      setActiveSessionId(newSessions.length > 0 ? newSessions[0].id : null);
+    }
+    if (window.electron) {
+      await window.electron.store.set('sessions', newSessions);
+    }
+  };
+
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
   if (isCaptureMode) {
@@ -109,6 +122,7 @@ export default function App() {
         activeSessionId={activeSessionId} 
         onSelectSession={setActiveSessionId}
         onNewSession={createNewSession}
+        onDeleteSession={deleteSession}
         onOpenSettings={() => setCurrentView('settings')}
         settings={settings}
       />
@@ -119,6 +133,7 @@ export default function App() {
             <ChatContainer 
               session={activeSession} 
               settings={settings}
+              onDeleteSession={deleteSession}
               onUpdateSession={(updated) => {
                 const newSessions = sessions.map(s => s.id === updated.id ? updated : s);
                 setSessions(newSessions);

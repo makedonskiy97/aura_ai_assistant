@@ -2,25 +2,32 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Message, ProviderType, FileContext } from "../types";
 
 export interface AIProvider {
-  sendMessage(messages: Message[], options: { model: string, files?: FileContext[], key?: string, url?: string }): Promise<string>;
-  streamMessage(messages: Message[], options: { model: string, files?: FileContext[], key?: string, url?: string }): AsyncGenerator<string>;
+  sendMessage(messages: Message[], options: { model: string, files?: FileContext[], key?: string, url?: string, signal?: AbortSignal, systemPrompt?: string }): Promise<string>;
+  streamMessage(messages: Message[], options: { model: string, files?: FileContext[], key?: string, url?: string, signal?: AbortSignal, systemPrompt?: string }): AsyncGenerator<string>;
 }
 
 export class GeminiProvider implements AIProvider {
   async *streamMessage(messages: Message[], options: any): AsyncGenerator<string> {
     if (!options.key) throw new Error("Gemini API Key missing");
     const genAI = new GoogleGenerativeAI(options.key);
-    const model = genAI.getGenerativeModel({ model: options.model || "gemini-1.5-flash" });
+    const modelOptions: any = { model: options.model || "gemini-1.5-flash" };
+    
+    if (options.systemPrompt) {
+      modelOptions.systemInstruction = options.systemPrompt;
+    }
+    
+    const model = genAI.getGenerativeModel(modelOptions);
 
     // Prepare context
     let promptParts: any[] = [];
+
     if (options.files) {
       options.files.forEach((f: FileContext) => {
         if (f.type.startsWith('image/')) {
           const base64 = f.content.split(',')[1] || f.content;
           promptParts.push({ inlineData: { data: base64, mimeType: f.type } });
         } else {
-          promptParts.push(`File Context (${f.name}):\n${f.content}\n---`);
+          promptParts.push({ text: `File Context (${f.name}):\n${f.content}\n---` });
         }
       });
     }
@@ -37,6 +44,9 @@ export class GeminiProvider implements AIProvider {
     ]);
 
     for await (const chunk of result.stream) {
+      if (options.signal?.aborted) {
+        throw new Error("Generation stopped by user");
+      }
       yield chunk.text();
     }
   }
@@ -74,6 +84,11 @@ export class OllamaProvider implements AIProvider {
       return msg;
     });
 
+    // Add system prompt if exists
+    if (options.systemPrompt) {
+      formattedMessages.unshift({ role: 'system', content: options.systemPrompt });
+    }
+
     const body = {
       model: options.model,
       messages: formattedMessages,
@@ -85,6 +100,7 @@ export class OllamaProvider implements AIProvider {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
+        signal: options.signal
       });
 
       if (!response.ok) {

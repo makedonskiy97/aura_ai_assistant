@@ -8,15 +8,21 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   timestamp: number;
-  attachments?: string[]; // URLs or base64
+  attachments?: FileContext[]; 
   isError?: boolean;
+  metrics?: {
+    timeSeconds: number;
+    tokensPerSecond?: number;
+  };
 }
 
 export interface FileContext {
+  id: string;
   name: string;
   content: string;
   type: string;
   size: number;
+  timestamp: number;
 }
 
 export interface ChatSession {
@@ -28,6 +34,7 @@ export interface ChatSession {
   createdAt: number;
   updatedAt: number;
   files: FileContext[];
+  systemPrompt?: string;
 }
 
 export interface AppSettings {

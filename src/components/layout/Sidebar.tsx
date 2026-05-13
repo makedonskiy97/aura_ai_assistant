@@ -1,4 +1,4 @@
-import { MessageSquarePlus, Settings, History, Bot, Sparkles } from 'lucide-react';
+import { MessageSquarePlus, Settings, History, Bot, Sparkles, Trash2 } from 'lucide-react';
 import { ChatSession, AppSettings, ProviderType } from '../../types';
 
 interface SidebarProps {
@@ -6,11 +6,12 @@ interface SidebarProps {
   activeSessionId: string | null;
   onSelectSession: (id: string) => void;
   onNewSession: () => void;
+  onDeleteSession: (id: string) => void;
   onOpenSettings: () => void;
   settings: AppSettings;
 }
 
-export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onOpenSettings, settings }: SidebarProps) {
+export default function Sidebar({ sessions, activeSessionId, onSelectSession, onNewSession, onDeleteSession, onOpenSettings, settings }: SidebarProps) {
   return (
     <aside className="w-64 border-r border-zinc-800 flex flex-col h-full bg-zinc-900">
       <div className="p-4 flex flex-col gap-4 border-b border-zinc-800">
@@ -40,22 +41,33 @@ export default function Sidebar({ sessions, activeSessionId, onSelectSession, on
 
       <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
         <div>
-          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-3">
+          <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest px-2 mb-3 flex items-center justify-between">
             Recent Sessions
           </div>
           <div className="space-y-1">
             {sessions.map(session => (
-              <button
-                key={session.id}
-                onClick={() => onSelectSession(session.id)}
-                className={`w-full text-left px-3 py-2 rounded-md text-xs transition-all truncate border ${
-                  activeSessionId === session.id 
-                  ? 'bg-zinc-800/50 border-indigo-500/30 text-zinc-100 font-medium shadow-sm' 
-                  : 'text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-zinc-200'
-                }`}
-              >
-                {session.title}
-              </button>
+              <div key={session.id} className="group relative">
+                <button
+                  onClick={() => onSelectSession(session.id)}
+                  className={`w-full text-left px-3 py-2 rounded-md text-xs transition-all truncate pr-8 border ${
+                    activeSessionId === session.id 
+                    ? 'bg-zinc-800/50 border-indigo-500/30 text-zinc-100 font-medium shadow-sm' 
+                    : 'text-zinc-400 border-transparent hover:bg-zinc-800/50 hover:text-zinc-200'
+                  }`}
+                >
+                  {session.title}
+                </button>
+                <button 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteSession(session.id);
+                  }}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all rounded"
+                  title="Delete conversation"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
             ))}
           </div>
           {sessions.length === 0 && (
