@@ -14,6 +14,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -86,6 +87,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const handlePasteClipboard = async () => {
     if (window.electron) {
       try {
+        console.log('Composer: Manual paste triggered');
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
           setFiles(prev => [...prev, {
@@ -94,26 +96,33 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
             type: 'image/png',
             size: 0
           }]);
+          setError(null);
         } else {
-          // You could add a toast or error state here
-          console.log('No image found in clipboard');
+          console.warn('Composer: No image found in clipboard');
+          setError('No image found in clipboard');
+          setTimeout(() => setError(null), 3000);
         }
       } catch (err) {
-        console.error('Failed to read clipboard:', err);
+        console.error('Composer: Failed to read clipboard:', err);
+        setError('Failed to access clipboard');
+        setTimeout(() => setError(null), 3000);
       }
     }
   };
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      if (document.activeElement?.tagName === 'TEXTAREA') {
-        const items = e.clipboardData?.items;
-        if (items) {
-          for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-              handlePasteClipboard();
-              break;
-            }
+      // Don't intercept if user is typing in some other random input
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' && target.type !== 'textarea') return;
+
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            console.log('Composer: Detected image in paste event');
+            handlePasteClipboard();
+            break;
           }
         }
       }
@@ -157,6 +166,12 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
                 </button>
               </div>
             ))}
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-[10px] font-bold uppercase tracking-widest animate-in slide-in-from-bottom-2">
+            ⚠️ {error}
           </div>
         )}
 

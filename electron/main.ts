@@ -195,9 +195,34 @@ ipcMain.handle('capture-screen', async () => {
 
 ipcMain.handle('read-clipboard-image', () => {
   const { clipboard } = require('electron');
+  const formats = clipboard.availableFormats();
+  console.log('Clipboard: Requested image read. Available formats:', formats);
+  
+  // Try standard image read
   const image = clipboard.readImage();
-  if (image.isEmpty()) return null;
-  return image.toDataURL();
+  if (!image.isEmpty()) {
+    console.log('Clipboard: Successfully read image via readImage()');
+    return image.toDataURL();
+  }
+
+  // Fallback to raw buffers if standard read fails (common on some Linux sessions)
+  if (formats.includes('image/png')) {
+    console.log('Clipboard: Falling back to image/png buffer');
+    const buffer = clipboard.readBuffer('image/png');
+    return `data:image/png;base64,${buffer.toString('base64')}`;
+  } else if (formats.includes('image/jpeg')) {
+    console.log('Clipboard: Falling back to image/jpeg buffer');
+    const buffer = clipboard.readBuffer('image/jpeg');
+    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  }
+
+  console.warn('Clipboard: No image formats found');
+  return null;
+});
+
+ipcMain.handle('get-clipboard-formats', () => {
+  const { clipboard } = require('electron');
+  return clipboard.availableFormats();
 });
 
 ipcMain.on('toggle-overlay', () => {

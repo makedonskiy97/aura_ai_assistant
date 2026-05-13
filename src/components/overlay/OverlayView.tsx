@@ -182,31 +182,42 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const handlePasteClipboard = async () => {
     if (window.electron) {
       try {
+        console.log('Overlay: Manual paste from button triggered');
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
-          console.log('Overlay: Pasted image from clipboard');
+          console.log('Overlay: Successfully pasted image from clipboard');
           setPendingAttachments(prev => [...prev, dataUrl]);
+          setError(null);
         } else {
+          console.warn('Overlay: No image found in clipboard');
           setError('No image found in clipboard');
           setTimeout(() => setError(null), 3000);
         }
       } catch (err) {
         console.error('Overlay: Failed to read clipboard:', err);
+        setError('Failed to access clipboard');
+        setTimeout(() => setError(null), 3000);
       }
     }
   };
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      // Only paste if overlay is visible (rendered) and input is focused
-      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
-        const items = e.clipboardData?.items;
-        if (items) {
-          for (let i = 0; i < items.length; i++) {
-            if (items[i].type.indexOf('image') !== -1) {
-              handlePasteClipboard();
-              break;
-            }
+      // Only paste if user isn't typing in a different input (though in overlay there's usually only one)
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' && target.type !== 'textarea') {
+        // Continue if it's our main input
+      } else if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
+        // If they just press ctrl+v while the window is focused but not on input, we can still handle it
+      }
+
+      const items = e.clipboardData?.items;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            console.log('Overlay: Detected image in paste event');
+            handlePasteClipboard();
+            break;
           }
         }
       }

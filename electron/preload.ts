@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld('electron', {
   },
   captureScreen: () => ipcRenderer.invoke('capture-screen'),
   readClipboardImage: () => ipcRenderer.invoke('read-clipboard-image'),
+  getClipboardFormats: () => ipcRenderer.invoke('get-clipboard-formats'),
 });
