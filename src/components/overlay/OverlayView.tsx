@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Bot, Send, Camera, X, Maximize2, Sparkles } from 'lucide-react';
 import { Message, AppSettings, ProviderType } from '../../types';
 import { GeminiProvider, OllamaProvider } from '../../services/ai-providers';
+import SelectionOverlay from '../chat/SelectionOverlay';
 
 interface OverlayViewProps {
   settings: AppSettings;
@@ -11,6 +12,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isSelecting, setIsSelecting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,21 +64,48 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   };
 
-  const handleCapture = async () => {
-    if (window.electron) {
-      const dataUrl = await window.electron.captureScreen();
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'user',
-        content: "[Captured Screen]",
-        attachments: [dataUrl],
-        timestamp: Date.now()
-      }]);
+  const handleCapture = () => {
+    setIsSelecting(true);
+  };
+
+  const onConfirmCapture = async (rect: { x: number; y: number; width: number; height: number }) => {
+    if (!window.electron) return;
+    try {
+      const fullScreenshot = await window.electron.captureScreen();
+      const img = new Image();
+      img.src = fullScreenshot;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+        const dataUrl = canvas.toDataURL('image/png');
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'user',
+          content: "[Captured Region]",
+          attachments: [dataUrl],
+          timestamp: Date.now()
+        }]);
+      }
+    } catch (err) {
+      console.error("Capture failed:", err);
+    } finally {
+      setIsSelecting(false);
     }
   };
 
   return (
     <div className="h-screen w-full flex flex-col bg-zinc-900 border border-indigo-500/50 rounded-xl overflow-hidden shadow-2xl drag transform scale-[0.98]">
+      {isSelecting && (
+        <SelectionOverlay 
+          onCapture={onConfirmCapture}
+          onCancel={() => setIsSelecting(false)}
+        />
+      )}
       <header className="h-12 flex items-center px-4 gap-3 bg-zinc-950 border-b border-zinc-800 no-drag">
         <div className="w-4 h-4 rounded bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <Sparkles className="w-2.5 h-2.5 text-white" />

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { Send, Paperclip, Camera, X, FileText, Image as ImageIcon } from 'lucide-react';
 import { FileContext } from '../../types';
 import { processFile } from '../../services/file-processor';
+import SelectionOverlay from './SelectionOverlay';
 
 interface ComposerProps {
   onSend: (content: string, files: FileContext[]) => void;
@@ -12,6 +13,7 @@ interface ComposerProps {
 export default function Composer({ onSend, isStreaming, attachedFiles = [] }: ComposerProps) {
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
+  const [isSelecting, setIsSelecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -31,18 +33,39 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleCaptureScreen = async () => {
+  const handleCaptureScreen = () => {
+    setIsSelecting(true);
+  };
+
+  const onConfirmCapture = async (rect: { x: number; y: number; width: number; height: number }) => {
     if (!window.electron) return;
     try {
-      const dataUrl = await window.electron.captureScreen();
-      setFiles([...files, {
-        name: `screenshot-${Date.now()}.png`,
-        content: dataUrl,
-        type: 'image/png',
-        size: 0
-      }]);
+      const fullScreenshot = await window.electron.captureScreen();
+      
+      const img = new Image();
+      img.src = fullScreenshot;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+        const croppedDataUrl = canvas.toDataURL('image/png');
+        
+        setFiles([...files, {
+          name: `capture-${Date.now()}.png`,
+          content: croppedDataUrl,
+          type: 'image/png',
+          size: 0
+        }]);
+      }
     } catch (err) {
-      console.error("Screenshot failed:", err);
+      console.error("Capture failed:", err);
+    } finally {
+      setIsSelecting(false);
     }
   };
 
@@ -52,6 +75,12 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
 
   return (
     <div className="p-6 bg-zinc-950">
+      {isSelecting && (
+        <SelectionOverlay 
+          onCapture={onConfirmCapture}
+          onCancel={() => setIsSelecting(false)}
+        />
+      )}
       <div className="max-w-4xl mx-auto flex flex-col gap-2">
         {files.length > 0 && (
           <div className="flex flex-wrap gap-2 mb-2 p-2 rounded-xl bg-zinc-900 border border-zinc-800">

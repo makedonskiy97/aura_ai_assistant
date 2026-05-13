@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, globalShortcut, desktopCapturer, screen } from 'electron';
+import { app, BrowserWindow, ipcMain, globalShortcut, desktopCapturer, screen, Tray, Menu, nativeImage } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Store from 'electron-store';
@@ -8,17 +8,20 @@ const store = new Store();
 
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
+let tray: Tray | null = null;
+let selectionWindow: BrowserWindow | null = null;
 
 function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
     titleBarStyle: 'hiddenInset',
+    backgroundColor: '#09090b',
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -40,10 +43,11 @@ function createOverlayWindow() {
     frame: false,
     transparent: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.mjs'),
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
     },
+    skipTaskbar: true,
   });
 
   if (process.env.VITE_DEV_SERVER_URL) {
@@ -53,10 +57,29 @@ function createOverlayWindow() {
   }
 }
 
+function createTray() {
+  // Use a simple colored box as a fallback icon if assets are missing
+  const icon = nativeImage.createFromPath(path.join(__dirname, '../public/icon.png'));
+  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
+  
+  const contextMenu = Menu.buildFromTemplate([
+    { label: 'Open Aura', click: () => mainWindow?.show() },
+    { label: 'Toggle Overlay', click: () => {
+      if (overlayWindow?.isVisible()) overlayWindow.hide();
+      else createOverlayWindow();
+    }},
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() }
+  ]);
+  
+  tray.setToolTip('Aura AI Assistant');
+  tray.setContextMenu(contextMenu);
+}
+
 app.whenReady().then(() => {
   createMainWindow();
+  createTray();
   
-  // Toggle overlay shortcut
   globalShortcut.register('CommandOrControl+Shift+Space', () => {
     if (overlayWindow) {
       if (overlayWindow.isVisible()) overlayWindow.hide();
@@ -80,7 +103,10 @@ ipcMain.handle('get-store-value', (event, key) => store.get(key));
 ipcMain.handle('set-store-value', (event, key, value) => store.set(key, value));
 
 ipcMain.handle('capture-screen', async () => {
-  const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: screen.getPrimaryDisplay().size });
+  const sources = await desktopCapturer.getSources({ 
+    types: ['screen'], 
+    thumbnailSize: screen.getPrimaryDisplay().size 
+  });
   return sources[0].thumbnail.toDataURL();
 });
 
