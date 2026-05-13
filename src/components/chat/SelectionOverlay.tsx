@@ -14,17 +14,12 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
 
   useEffect(() => {
-    const init = async () => {
-      if (window.electron) {
-        try {
-          const dataUrl = await window.electron.captureScreen();
-          setBackgroundImage(dataUrl);
-        } catch (err) {
-          console.error("Failed to capture background:", err);
-        }
-      }
-    };
-    init();
+    if (window.electron) {
+      const cleanup = window.electron.ipcRenderer.on('set-capture-bg', (dataUrl: string) => {
+        setBackgroundImage(dataUrl);
+      });
+      return () => cleanup();
+    }
   }, []);
   
   const handleMouseDown = (e: React.MouseEvent) => {

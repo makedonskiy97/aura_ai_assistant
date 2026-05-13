@@ -153,19 +153,11 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
               </button>
               <button
                 type="button"
-                onClick={handleCaptureScreen}
-                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Capture screen region (This Window)"
-              >
-                <Camera className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
                 onClick={handleGlobalCapture}
                 className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Global Desktop Capture"
+                title="Capture screen region"
               >
-                <ScreenShare className="w-5 h-5" />
+                <Camera className="w-5 h-5" />
               </button>
             </div>
             <button

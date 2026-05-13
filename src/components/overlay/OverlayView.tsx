@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare } from 'lucide-react';
+import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare, Paperclip } from 'lucide-react';
 import { Message, AppSettings, ProviderType } from '../../types';
 import { GeminiProvider, OllamaProvider } from '../../services/ai-providers';
 import SelectionOverlay from '../chat/SelectionOverlay';
@@ -14,6 +14,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (window.electron) {
@@ -113,8 +114,30 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   };
 
+  const handleFileClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'user',
+        content: `[Attached File: ${file.name}]`,
+        timestamp: Date.now()
+      }]);
+    }
+  };
+
   return (
     <div className="h-screen w-full flex flex-col bg-zinc-900 border border-indigo-500/50 rounded-xl overflow-hidden shadow-2xl drag transform scale-[0.98]">
+      <input 
+        type="file" 
+        ref={fileInputRef} 
+        onChange={handleFileChange} 
+        className="hidden" 
+      />
       {isSelecting && (
         <SelectionOverlay 
           onCapture={onConfirmCapture}
@@ -127,15 +150,12 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-300">Nexus Overlay</span>
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={handleCapture} className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400" title="Capture App Region">
-            <Camera className="w-3.5 h-3.5" />
-          </button>
           <button 
-            onClick={() => window.electron?.ipcRenderer.send('start-capture')}
-            className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400"
-            title="Global Desktop Capture"
+            onClick={() => window.electron?.ipcRenderer.send('start-capture')} 
+            className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400" 
+            title="Desktop Screenshot (Region)"
           >
-            <ScreenShare className="w-3.5 h-3.5" />
+            <Camera className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => window.electron?.ipcRenderer.send('toggle-overlay')}
@@ -178,13 +198,19 @@ export default function OverlayView({ settings }: OverlayViewProps) {
 
       <div className="p-4 bg-zinc-950/50 border-t border-zinc-800 no-drag">
         <div className="relative group">
+          <button
+            onClick={handleFileClick}
+            className="absolute left-2 top-2 text-zinc-500 hover:text-indigo-400 transition-colors"
+          >
+            <Paperclip className="w-3.5 h-3.5" />
+          </button>
           <input
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="Type a quick question..."
-            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-3 pr-10 text-[11px] text-zinc-300 placeholder-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
+            className="w-full bg-zinc-950 border border-zinc-800 rounded-lg py-2.5 pl-8 pr-10 text-[11px] text-zinc-300 placeholder-zinc-700 focus:outline-none focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 transition-all"
           />
           <button 
             onClick={handleSend}
@@ -196,6 +222,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         </div>
         <div className="mt-3 flex gap-2">
           <button 
+            onClick={() => window.electron?.ipcRenderer.send('show-main-window')}
             className="flex-1 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-md text-[9px] font-bold uppercase tracking-widest text-zinc-400 hover:text-zinc-100 transition-all"
           >
             Expand App

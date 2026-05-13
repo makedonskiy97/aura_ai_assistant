@@ -39,6 +39,12 @@ function createMainWindow() {
 function createOverlayWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.show();
+    overlayWindow.focus();
+    return;
+  }
+
   overlayWindow = new BrowserWindow({
     width: 320,
     height: 480,
@@ -61,6 +67,10 @@ function createOverlayWindow() {
   } else {
     overlayWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'overlay' });
   }
+
+  overlayWindow.on('closed', () => {
+    overlayWindow = null;
+  });
 }
 
 function createSelectionWindow() {
@@ -92,15 +102,24 @@ function createSelectionWindow() {
 }
 
 function createTray() {
-  // Use a simple colored box as a fallback icon if assets are missing
   const icon = nativeImage.createFromPath(path.join(__dirname, '../public/icon.png'));
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   
   const contextMenu = Menu.buildFromTemplate([
-    { label: 'Open Aura', click: () => mainWindow?.show() },
+    { label: 'Open Aura', click: () => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.show();
+        mainWindow.focus();
+      } else {
+        createMainWindow();
+      }
+    }},
     { label: 'Toggle Overlay', click: () => {
-      if (overlayWindow?.isVisible()) overlayWindow.hide();
-      else createOverlayWindow();
+      if (overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible()) {
+        overlayWindow.hide();
+      } else {
+        createOverlayWindow();
+      }
     }},
     { type: 'separator' },
     { label: 'Quit', click: () => app.quit() }
@@ -108,6 +127,15 @@ function createTray() {
   
   tray.setToolTip('Aura AI Assistant');
   tray.setContextMenu(contextMenu);
+  tray.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isVisible()) mainWindow.hide();
+      else {
+        mainWindow.show();
+        mainWindow.focus();
+      }
+    }
+  });
 }
 
 app.whenReady().then(() => {
@@ -156,11 +184,46 @@ ipcMain.on('toggle-overlay', () => {
   }
 });
 
-ipcMain.on('start-capture', () => {
+ipcMain.on('start-capture', async () => {
+  // Hide windows to capture what's behind
+  const wasMainVisible = mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible();
+  const wasOverlayVisible = overlayWindow && !overlayWindow.isDestroyed() && overlayWindow.isVisible();
+  
+  if (wasMainVisible) mainWindow?.hide();
+  if (wasOverlayVisible) overlayWindow?.hide();
+
+  // Wait for windows to hide
+  await new Promise(resolve => setTimeout(resolve, 150));
+
+  const sources = await desktopCapturer.getSources({ 
+    types: ['screen'], 
+    thumbnailSize: screen.getPrimaryDisplay().size 
+  });
+  
+  const bgImage = sources[0].thumbnail.toDataURL();
+
   if (selectionWindow && !selectionWindow.isDestroyed()) {
+    selectionWindow.webContents.send('set-capture-bg', bgImage);
     selectionWindow.show();
   } else {
     createSelectionWindow();
+    selectionWindow?.once('ready-to-show', () => {
+      selectionWindow?.webContents.send('set-capture-bg', bgImage);
+      selectionWindow?.show();
+    });
+  }
+
+  // Restore windows
+  if (wasMainVisible) mainWindow?.show();
+  if (wasOverlayVisible) overlayWindow?.show();
+});
+
+ipcMain.on('show-main-window', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.show();
+    mainWindow.focus();
+  } else {
+    createMainWindow();
   }
 });
 
