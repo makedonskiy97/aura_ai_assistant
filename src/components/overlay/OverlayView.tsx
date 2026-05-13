@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Camera, X, Maximize2, Sparkles } from 'lucide-react';
+import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare } from 'lucide-react';
 import { Message, AppSettings, ProviderType } from '../../types';
 import { GeminiProvider, OllamaProvider } from '../../services/ai-providers';
 import SelectionOverlay from '../chat/SelectionOverlay';
@@ -14,6 +14,21 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isSelecting, setIsSelecting] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (window.electron) {
+      const cleanup = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'user',
+          content: "[Global Desktop Capture]",
+          attachments: [dataUrl],
+          timestamp: Date.now()
+        }]);
+      });
+      return () => cleanup();
+    }
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -112,8 +127,15 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         </div>
         <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-300">Nexus Overlay</span>
         <div className="ml-auto flex items-center gap-1">
-          <button onClick={handleCapture} className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400">
+          <button onClick={handleCapture} className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400" title="Capture App Region">
             <Camera className="w-3.5 h-3.5" />
+          </button>
+          <button 
+            onClick={() => window.electron?.ipcRenderer.send('start-capture')}
+            className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400"
+            title="Global Desktop Capture"
+          >
+            <ScreenShare className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => window.electron?.ipcRenderer.send('toggle-overlay')}

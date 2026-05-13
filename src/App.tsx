@@ -4,6 +4,7 @@ import Sidebar from './components/layout/Sidebar';
 import ChatContainer from './components/chat/ChatContainer';
 import OverlayView from './components/overlay/OverlayView';
 import SettingsView from './components/settings/SettingsView';
+import SelectionOverlay from './components/chat/SelectionOverlay';
 import { GeminiProvider, OllamaProvider } from './services/ai-providers';
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -22,11 +23,15 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isOverlay, setIsOverlay] = useState(false);
+  const [isCaptureMode, setIsCaptureMode] = useState(false);
 
   useEffect(() => {
     // Check if we are in overlay mode via hash
     if (window.location.hash === '#overlay') {
       setIsOverlay(true);
+    }
+    if (window.location.hash === '#capture') {
+      setIsCaptureMode(true);
     }
 
     // Load settings and history from electron-store if available
@@ -69,6 +74,34 @@ export default function App() {
   };
 
   const activeSession = sessions.find(s => s.id === activeSessionId);
+
+  if (isCaptureMode) {
+    return (
+      <SelectionOverlay 
+        onCapture={async (rect) => {
+          if (window.electron) {
+            const fullScreenshot = await window.electron.captureScreen();
+            const img = new Image();
+            img.src = fullScreenshot;
+            await new Promise((resolve) => (img.onload = resolve));
+
+            const canvas = document.createElement('canvas');
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            const ctx = canvas.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+              const croppedDataUrl = canvas.toDataURL('image/png');
+              window.electron.ipcRenderer.send('capture-result', croppedDataUrl);
+            }
+          }
+        }}
+        onCancel={() => {
+          if (window.electron) window.electron.ipcRenderer.send('close-selection');
+        }}
+      />
+    );
+  }
 
   if (isOverlay) {
     return <OverlayView settings={settings} />;

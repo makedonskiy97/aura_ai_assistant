@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Send, Paperclip, Camera, X, FileText, Image as ImageIcon } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Send, Paperclip, Camera, X, FileText, Image as ImageIcon, ScreenShare } from 'lucide-react';
 import { FileContext } from '../../types';
 import { processFile } from '../../services/file-processor';
 import SelectionOverlay from './SelectionOverlay';
@@ -15,6 +15,20 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isSelecting, setIsSelecting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (window.electron) {
+      const cleanup = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
+        setFiles(prev => [...prev, {
+          name: `capture-${Date.now()}.png`,
+          content: dataUrl,
+          type: 'image/png',
+          size: 0
+        }]);
+      });
+      return () => cleanup();
+    }
+  }, []);
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -35,6 +49,12 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
 
   const handleCaptureScreen = () => {
     setIsSelecting(true);
+  };
+
+  const handleGlobalCapture = () => {
+    if (window.electron) {
+      window.electron.ipcRenderer.send('start-capture');
+    }
   };
 
   const onConfirmCapture = async (rect: { x: number; y: number; width: number; height: number }) => {
@@ -135,9 +155,17 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
                 type="button"
                 onClick={handleCaptureScreen}
                 className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
-                title="Capture screen region"
+                title="Capture screen region (This Window)"
               >
                 <Camera className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handleGlobalCapture}
+                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
+                title="Global Desktop Capture"
+              >
+                <ScreenShare className="w-5 h-5" />
               </button>
             </div>
             <button

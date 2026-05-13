@@ -15,6 +15,7 @@ function createMainWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -29,19 +30,24 @@ function createMainWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
   }
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
 }
 
 function createOverlayWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
   
   overlayWindow = new BrowserWindow({
-    width: 400,
-    height: 600,
-    x: width - 420,
+    width: 320,
+    height: 480,
+    x: width - 340,
     y: 50,
     alwaysOnTop: true,
     frame: false,
     transparent: true,
+    resizable: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -54,6 +60,34 @@ function createOverlayWindow() {
     overlayWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#overlay`);
   } else {
     overlayWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'overlay' });
+  }
+}
+
+function createSelectionWindow() {
+  const { width, height } = screen.getPrimaryDisplay().size;
+  
+  selectionWindow = new BrowserWindow({
+    width,
+    height,
+    x: 0,
+    y: 0,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    fullscreen: true,
+    skipTaskbar: true,
+    enableLargerThanScreen: true,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  if (process.env.VITE_DEV_SERVER_URL) {
+    selectionWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#capture`);
+  } else {
+    selectionWindow.loadFile(path.join(__dirname, '../dist/index.html'), { hash: 'capture' });
   }
 }
 
@@ -104,17 +138,46 @@ ipcMain.handle('set-store-value', (event, key, value) => store.set(key, value));
 
 ipcMain.handle('capture-screen', async () => {
   const sources = await desktopCapturer.getSources({ 
-    types: ['screen'], 
+    types: ['screen', 'window'], 
     thumbnailSize: screen.getPrimaryDisplay().size 
   });
   return sources[0].thumbnail.toDataURL();
 });
 
 ipcMain.on('toggle-overlay', () => {
-  if (overlayWindow) {
-    if (overlayWindow.isVisible()) overlayWindow.hide();
-    else overlayWindow.show();
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    if (overlayWindow.isVisible()) {
+      overlayWindow.hide();
+    } else {
+      overlayWindow.show();
+    }
   } else {
     createOverlayWindow();
+  }
+});
+
+ipcMain.on('start-capture', () => {
+  if (selectionWindow && !selectionWindow.isDestroyed()) {
+    selectionWindow.show();
+  } else {
+    createSelectionWindow();
+  }
+});
+
+ipcMain.on('close-selection', () => {
+  if (selectionWindow && !selectionWindow.isDestroyed()) {
+    selectionWindow.close();
+  }
+});
+
+ipcMain.on('capture-result', (event, dataUrl) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('on-capture-complete', dataUrl);
+  }
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.webContents.send('on-capture-complete', dataUrl);
+  }
+  if (selectionWindow && !selectionWindow.isDestroyed()) {
+    selectionWindow.close();
   }
 });
