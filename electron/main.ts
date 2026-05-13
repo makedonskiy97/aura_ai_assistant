@@ -6,6 +6,12 @@ import Store from 'electron-store';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const store = new Store();
 
+// Enable PipeWire support for Wayland on Linux
+if (process.platform === 'linux') {
+  app.commandLine.appendSwitch('enable-features', 'WebRTCPipeWireCapturer');
+  app.commandLine.appendSwitch('enable-webrtc-pipewire-capturer');
+}
+
 let mainWindow: BrowserWindow | null = null;
 let overlayWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -221,20 +227,34 @@ ipcMain.on('start-capture', async () => {
     const { width, height } = display.bounds;
     const scaleFactor = display.scaleFactor;
 
-    console.log(`Capture: primary display bounds: ${width}x${height}, scale: ${scaleFactor}`);
+    console.log(`Capture: primary display bounds: ${width}x${height}, scale: ${scaleFactor}, platform: ${process.platform}`);
+    if (process.platform === 'linux') {
+      console.log('Capture: Linux detected, session type:', process.env.XDG_SESSION_TYPE);
+    }
 
     const sources = await desktopCapturer.getSources({ 
-      types: ['screen'], 
+      types: ['screen', 'window'], // Sometimes window type is needed to trigger the portal on Wayland
       thumbnailSize: {
         width: Math.floor(width * scaleFactor),
         height: Math.floor(height * scaleFactor)
       }
     });
+
+    console.log(`Capture: found ${sources.length} sources`);
+    sources.forEach((s, i) => console.log(`Source ${i}: ${s.name} (ID: ${s.id}, Display ID: ${s.display_id})`));
     
     // Find the source that matches the screen or take the first one
-    const source = sources.find(s => s.display_id === display.id.toString()) || sources[0];
+    const source = sources.find(s => s.display_id === display.id.toString()) || 
+                   sources.find(s => s.name.toLowerCase().includes('screen')) ||
+                   sources[0];
     
-    if (!source) throw new Error('No screen capture sources found');
+    if (!source) {
+      throw new Error(
+        process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland'
+          ? 'No capture sources found. Wayland detected - ensure PipeWire and xdg-desktop-portal are configured.'
+          : 'No screen capture sources found.'
+      );
+    }
     
     const bgImage = source.thumbnail.toDataURL();
     console.log('Capture: screenshot taken, length:', bgImage.length);

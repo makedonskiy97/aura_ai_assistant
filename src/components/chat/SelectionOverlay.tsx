@@ -51,7 +51,8 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   useEffect(() => {
     if (window.electron) {
       const cleanup = window.electron.ipcRenderer.on('set-capture-bg', (dataUrl: string, scale: number) => {
-        console.log('CaptureOverlay: bg received, scale:', scale);
+        console.log(`CaptureOverlay: Received background image. Length: ${dataUrl.length}, Scale: ${scale}`);
+        console.log('CaptureOverlay: Window dimensions:', window.innerWidth, 'x', window.innerHeight);
         setBackgroundImage(dataUrl);
         setScaleFactor(scale || 1);
       });

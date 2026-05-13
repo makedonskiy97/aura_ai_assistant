@@ -286,8 +286,25 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       )}
 
       {error && (
-        <div className="px-4 py-2 bg-red-500/10 border-t border-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-widest no-drag">
-          {error}
+        <div className="px-4 py-3 bg-red-500/10 border-t border-red-500/20 text-red-400 text-[10px] font-bold uppercase tracking-widest no-drag transition-all animate-in slide-in-from-bottom-2">
+          <div className="flex items-start gap-2">
+            <div className="mt-0.5 shrink-0">⚠️</div>
+            <div className="leading-relaxed flex-1">
+              {error}
+              {error.includes('Wayland') && (
+                <div className="mt-2 normal-case font-normal text-[9px] text-zinc-500">
+                  Tip: Ensure xdg-desktop-portal and a backend (like -gtk or -kde) are installed. 
+                  Try switching to X11 if problems persist.
+                </div>
+              )}
+            </div>
+            <button 
+              onClick={() => setError(null)}
+              className="p-1 hover:bg-zinc-800 rounded transition-colors"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
         </div>
       )}
 
