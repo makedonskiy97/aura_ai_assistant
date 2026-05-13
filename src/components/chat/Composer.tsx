@@ -15,18 +15,22 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (window.electron) {
       const cleanup = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
-        setFiles(prev => [...prev, {
+        const newFile: FileContext = {
+          id: crypto.randomUUID(),
           name: `capture-${Date.now()}.png`,
           content: dataUrl,
           type: 'image/png',
-          size: 0
-        }]);
+          size: 0,
+          timestamp: Date.now()
+        };
+        setFiles(prev => [...prev, newFile]);
         setIsCapturing(false);
         setCapturePhase('success');
       });
@@ -72,8 +76,29 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []);
     const processed = await Promise.all(selectedFiles.map(processFile));
-    setFiles([...files, ...processed]);
+    setFiles(prev => [...prev, ...processed]);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) {
+      const processed = await Promise.all(droppedFiles.map(processFile));
+      setFiles(prev => [...prev, ...processed]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
   };
 
   const handleGlobalCapture = () => {
@@ -90,12 +115,15 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
         console.log('Composer: Manual paste triggered');
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
-          setFiles(prev => [...prev, {
+          const newFile: FileContext = {
+            id: crypto.randomUUID(),
             name: `clipboard-${Date.now()}.png`,
             content: dataUrl,
             type: 'image/png',
-            size: 0
-          }]);
+            size: 0,
+            timestamp: Date.now()
+          };
+          setFiles(prev => [...prev, newFile]);
           setError(null);
         } else {
           console.warn('Composer: No image found in clipboard');
@@ -112,7 +140,6 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
 
   useEffect(() => {
     const handlePaste = (e: ClipboardEvent) => {
-      // Don't intercept if user is typing in some other random input
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' && target.type !== 'textarea') return;
 
@@ -132,12 +159,26 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
 
-  const removeFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
+  const removeFile = (id: string) => {
+    setFiles(files.filter(f => f.id !== id));
   };
 
   return (
-    <div className="p-6 bg-zinc-950 relative">
+    <div 
+      className={`p-6 bg-zinc-950 relative transition-all ${isDragging ? 'bg-indigo-600/5' : ''}`}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+    >
+      {isDragging && (
+        <div className="absolute inset-0 z-[60] border-2 border-dashed border-indigo-500/50 flex items-center justify-center pointer-events-none bg-zinc-950/20 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3">
+            <Paperclip className="w-10 h-10 text-indigo-500 animate-bounce" />
+            <p className="text-sm font-bold uppercase tracking-widest text-indigo-400">Release to attach files</p>
+          </div>
+        </div>
+      )}
+
       {isCapturing && (
         <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200">
           <div className={`w-10 h-10 rounded-full border-4 ${capturePhase === 'ready' ? 'border-green-500/20 border-t-green-500' : 'border-indigo-500/20 border-t-indigo-500'} animate-spin mb-3`} />
@@ -147,23 +188,35 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
           </p>
         </div>
       )}
+
       <div className="max-w-4xl mx-auto flex flex-col gap-2">
         {files.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2 p-2 rounded-xl bg-zinc-900 border border-zinc-800">
-            {files.map((file, i) => (
-              <div key={i} className="flex items-center gap-2 px-2 py-1 bg-zinc-800 rounded-md border border-zinc-700 shadow-sm animate-in zoom-in-95 duration-200">
-                {file.type.startsWith('image/') ? (
-                   <ImageIcon className="w-3 h-3 text-indigo-400" />
-                ) : (
-                  <FileText className="w-3 h-3 text-zinc-500" />
-                )}
-                <span className="text-[10px] font-medium text-zinc-300 truncate max-w-[100px]">{file.name}</span>
-                <button 
-                  onClick={() => removeFile(i)}
-                  className="p-0.5 hover:bg-zinc-700 rounded-full transition-colors text-zinc-500 hover:text-zinc-200"
-                >
-                  <X className="w-3 h-3" />
-                </button>
+          <div className="flex flex-wrap gap-3 mb-4 p-4 rounded-2xl bg-zinc-900 border border-zinc-800 shadow-inner max-h-[300px] overflow-y-auto scrollbar-hide animate-in slide-in-from-bottom-4">
+            {files.map((file) => (
+              <div key={file.id} className="relative group/attachment">
+                <div className="flex items-center gap-3 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-xl shadow-sm transition-all hover:border-indigo-500/30">
+                  {file.type.startsWith('image/') ? (
+                    <div className="w-10 h-10 rounded-lg overflow-hidden bg-zinc-950 border border-zinc-700 flex-shrink-0">
+                      <img src={file.content} alt={file.name} className="w-full h-full object-cover" />
+                    </div>
+                  ) : (
+                    <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-700 flex items-center justify-center flex-shrink-0">
+                      <FileText className="w-5 h-5 text-zinc-500" />
+                    </div>
+                  )}
+                  <div className="flex flex-col min-w-0 pr-6">
+                    <span className="text-[11px] font-bold text-zinc-200 truncate max-w-[120px]">{file.name}</span>
+                    <span className="text-[9px] font-medium text-zinc-500 uppercase tracking-wider">
+                      {(file.size / 1024).toFixed(1)} KB
+                    </span>
+                  </div>
+                  <button 
+                    onClick={() => removeFile(file.id)}
+                    className="absolute -top-2 -right-2 p-1 bg-zinc-800 border border-zinc-700 rounded-full text-zinc-400 hover:text-red-400 hover:bg-zinc-700 transition-all opacity-0 group-hover/attachment:opacity-100 shadow-lg scale-90 group-hover/attachment:scale-100"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -188,8 +241,8 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
                 handleSubmit();
               }
             }}
-            placeholder="Ask about files or screenshots..."
-            className="w-full resize-none bg-transparent py-4 px-4 pr-32 focus:outline-none text-sm min-h-[80px] max-h-[300px] leading-relaxed text-zinc-200 placeholder-zinc-600"
+            placeholder="Type message, drop files, or paste screenshots..."
+            className="w-full resize-none bg-transparent py-4 px-4 pr-32 focus:outline-none text-sm min-h-[100px] max-h-[300px] leading-relaxed text-zinc-200 placeholder-zinc-600"
             rows={2}
           />
 
@@ -225,7 +278,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
               disabled={isStreaming || (!content.trim() && files.length === 0)}
               className="pointer-events-auto px-6 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:bg-zinc-800 text-white rounded-xl text-sm font-semibold transition-all shadow-lg shadow-indigo-500/20"
             >
-              Send Request
+              Send Message
             </button>
           </div>
         </form>
@@ -238,8 +291,8 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
           onChange={handleFileChange}
         />
         
-        <p className="text-[10px] text-center text-zinc-400 dark:text-zinc-500 font-medium">
-          Aura supports text, PDF, code, and images. Press Shift+Enter for new line.
+        <p className="text-[10px] text-center text-zinc-500 font-medium mt-2">
+          Drop files or use <span className="text-zinc-400 font-bold">Ctrl+V</span> for fast screenshot sharing.
         </p>
       </div>
     </div>

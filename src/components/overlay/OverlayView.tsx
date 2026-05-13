@@ -13,46 +13,47 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [input, setInput] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [pendingAttachments, setPendingAttachments] = useState<string[]>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<FileContext[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
   useEffect(() => {
     if (window.electron) {
       const cleanupCapture = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
-        console.log('Overlay: global capture received, size:', dataUrl.length);
-        setPendingAttachments(prev => [...prev, dataUrl]);
+        console.log('Overlay: global capture received');
+        const newFile: FileContext = {
+          id: crypto.randomUUID(),
+          name: `capture-${Date.now()}.png`,
+          content: dataUrl,
+          type: 'image/png',
+          size: 0,
+          timestamp: Date.now()
+        };
+        setPendingAttachments(prev => [...prev, newFile]);
         setIsCapturing(false);
         setCapturePhase('success');
         setTimeout(() => setCapturePhase('idle'), 2000);
       });
 
       const cleanupReady = window.electron.ipcRenderer.on('capture-ready', () => {
-        console.log('Overlay: capture interface ready');
         setCapturePhase('ready');
       });
 
       const cleanupStatus = window.electron.ipcRenderer.on('capture-status', (status: string) => {
-        console.log('Overlay: capture status update:', status);
         if (status === 'requested') setCapturePhase('requested');
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
-        console.error('Overlay: capture error event received:', msg);
         setError(msg);
         setIsCapturing(false);
         setCapturePhase('failed');
-        setTimeout(() => {
-          setError(null);
-          setCapturePhase('idle');
-        }, 5000);
+        setTimeout(() => { setError(null); setCapturePhase('idle'); }, 5000);
       });
 
       const cleanupCancel = window.electron.ipcRenderer.on('on-capture-cancelled', () => {
-        console.log('Overlay: capture cancelled event received');
         setIsCapturing(false);
         setCapturePhase('cancelled');
         setTimeout(() => setCapturePhase('idle'), 2000);
@@ -68,20 +69,15 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   }, []);
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-  }, [messages]);
-
   const handleSend = async () => {
     if ((!input.trim() && pendingAttachments.length === 0) || isStreaming) return;
 
     const providerModel = settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel;
-    console.log(`Overlay: REQUEST START - Model: ${providerModel}, Provider: ${settings.provider}`);
 
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
-      content: input || (pendingAttachments.length > 0 ? "[Attached Images]" : ""),
+      content: input || (pendingAttachments.some(a => a.type.startsWith('image/')) ? "[Attached Intelligence]" : ""),
       attachments: pendingAttachments,
       timestamp: Date.now(),
     };
@@ -97,7 +93,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     let assistantContent = "";
     
     const assistantMessage: Message = {
-      id: (Date.now() + 1).toString(),
+      id: crypto.randomUUID(),
       role: 'assistant',
       content: "",
       timestamp: Date.now(),
@@ -110,21 +106,15 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         model: providerModel,
         key: settings.geminiKey,
         url: settings.ollamaUrl,
-        files: currentAttachments.map((dataUrl, i) => ({
-          name: `capture-${i}.png`,
-          type: 'image/png',
-          content: dataUrl,
-          size: 0
-        }))
+        files: currentAttachments
       });
 
       for await (const chunk of stream) {
         assistantContent += chunk;
         setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: assistantContent } : m));
       }
-      console.log('Overlay: REQUEST SUCCESS');
     } catch (err: any) {
-      console.error('Overlay: REQUEST FAILED', err);
+      console.error('Overlay Error:', err);
       setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { 
         ...m, 
         content: `Error: ${err.message || "Failed to get response"}`,
@@ -135,107 +125,72 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   };
 
-  const handleGlobalCapture = () => {
-    console.log('Overlay: global capture triggered');
-    setIsCapturing(true);
-    setCapturePhase('preparing');
-    window.electron?.ipcRenderer.send('start-capture');
-    
-    // Auto-timeout if selection window never appears
-    setTimeout(() => {
-      setCapturePhase(prev => {
-        if (prev === 'preparing' || prev === 'requested') {
-          console.warn('Overlay: Capture initialization timed out');
-          setError('Capture interface failed to load. Check PipeWire/Portal settings.');
-          setIsCapturing(false);
-          setTimeout(() => setError(null), 3000);
-          return 'failed';
-        }
-        return prev;
-      });
-    }, 15000); // Increased timeout to 15s for Wayland prompts
-  };
-
-  const handleFileClick = () => {
-    console.log('Overlay: file attach click');
-    fileInputRef.current?.click();
-  };
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      console.log('Overlay: file selected', file.name);
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = (rev) => {
-          if (rev.target?.result) {
-            setPendingAttachments(prev => [...prev, rev.target?.result as string]);
-          }
-        };
-        reader.readAsDataURL(file);
-      } else {
-        setInput(prev => prev + ` [Attached File: ${file.name}] `);
-      }
+    const selectedFiles = Array.from(e.target.files || []);
+    if (selectedFiles.length > 0) {
+      const processed = await Promise.all(selectedFiles.map(processFile));
+      setPendingAttachments(prev => [...prev, ...processed]);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const droppedFiles = Array.from(e.dataTransfer.files);
+    if (droppedFiles.length > 0) {
+      const processed = await Promise.all(droppedFiles.map(processFile));
+      setPendingAttachments(prev => [...prev, ...processed]);
     }
   };
 
   const handlePasteClipboard = async () => {
     if (window.electron) {
       try {
-        console.log('Overlay: Manual paste from button triggered');
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
-          console.log('Overlay: Successfully pasted image from clipboard');
-          setPendingAttachments(prev => [...prev, dataUrl]);
+          const newFile: FileContext = {
+            id: crypto.randomUUID(),
+            name: `clipboard-${Date.now()}.png`,
+            content: dataUrl,
+            type: 'image/png',
+            size: 0,
+            timestamp: Date.now()
+          };
+          setPendingAttachments(prev => [...prev, newFile]);
           setError(null);
         } else {
-          console.warn('Overlay: No image found in clipboard');
           setError('No image found in clipboard');
           setTimeout(() => setError(null), 3000);
         }
       } catch (err) {
-        console.error('Overlay: Failed to read clipboard:', err);
         setError('Failed to access clipboard');
         setTimeout(() => setError(null), 3000);
       }
     }
   };
 
-  useEffect(() => {
-    const handlePaste = (e: ClipboardEvent) => {
-      // Only paste if user isn't typing in a different input (though in overlay there's usually only one)
-      const target = e.target as HTMLElement;
-      if (target.tagName === 'INPUT' && target.type !== 'textarea') {
-        // Continue if it's our main input
-      } else if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
-        // If they just press ctrl+v while the window is focused but not on input, we can still handle it
-      }
-
-      const items = e.clipboardData?.items;
-      if (items) {
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            console.log('Overlay: Detected image in paste event');
-            handlePasteClipboard();
-            break;
-          }
-        }
-      }
-    };
-
-    window.addEventListener('paste', handlePaste);
-    return () => window.removeEventListener('paste', handlePaste);
-  }, []);
-
   return (
-    <div className="h-screen w-full flex flex-col bg-zinc-900 border border-indigo-500/50 rounded-xl overflow-hidden shadow-2xl drag transform scale-[0.98]">
+    <div 
+      className={`h-screen w-full flex flex-col bg-zinc-900 border border-indigo-500/50 rounded-xl overflow-hidden shadow-2xl drag transform scale-[0.98] transition-colors ${isDragging ? 'bg-indigo-600/5' : ''}`}
+      onDrop={handleDrop}
+      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragLeave={() => setIsDragging(false)}
+    >
       <input 
         type="file" 
+        multiple
         ref={fileInputRef} 
         onChange={handleFileChange} 
         className="hidden" 
       />
       
+      {isDragging && (
+        <div className="absolute inset-0 z-[60] border-2 border-dashed border-indigo-500/50 flex flex-col items-center justify-center bg-zinc-950/40 backdrop-blur-sm pointer-events-none no-drag">
+           <Paperclip className="w-8 h-8 text-indigo-400 animate-bounce mb-2" />
+           <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Release to attach</p>
+        </div>
+      )}
+
       {isCapturing && (
         <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-md flex flex-col items-center justify-center text-center animate-in fade-in duration-300 no-drag">
           <div className="relative mb-6">
@@ -311,8 +266,17 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         )}
         {messages.map((m) => (
           <div key={m.id} className={`flex flex-col ${m.role === 'user' ? 'items-end' : 'items-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-            {m.attachments?.map((att, i) => (
-              <img key={i} src={att} className="max-w-[80%] h-auto rounded-lg mb-2 border border-zinc-800 shadow-xl" alt="Attachment" />
+            {m.attachments?.map((att) => (
+              <div key={att.id} className="mb-2 max-w-[80%]">
+                {att.type.startsWith('image/') ? (
+                  <img src={att.content} className="rounded-lg border border-zinc-800 shadow-xl" alt={att.name} />
+                ) : (
+                  <div className="px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-indigo-400" />
+                    <span className="text-[10px] text-zinc-300 truncate max-w-[120px]">{att.name}</span>
+                  </div>
+                )}
+              </div>
             ))}
             <div className={`max-w-[90%] px-3 py-2.5 rounded-xl text-[11px] leading-relaxed ${
               m.role === 'user' 
@@ -333,13 +297,19 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       </div>
 
       {pendingAttachments.length > 0 && (
-        <div className="px-4 py-2 bg-zinc-950/80 border-t border-zinc-800 flex gap-2 overflow-x-auto no-drag">
-          {pendingAttachments.map((att, i) => (
-            <div key={i} className="relative group shrink-0">
-              <img src={att} className="w-12 h-12 rounded border border-zinc-700 object-cover" alt="Preview" />
+        <div className="px-4 py-3 bg-zinc-950/90 border-t border-zinc-800 flex gap-3 overflow-x-auto no-drag scrollbar-hide">
+          {pendingAttachments.map((att) => (
+            <div key={att.id} className="relative group shrink-0">
+              {att.type.startsWith('image/') ? (
+                <img src={att.content} className="w-12 h-12 rounded-lg border border-zinc-700 object-cover shadow-lg" alt={att.name} />
+              ) : (
+                <div className="w-12 h-12 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center">
+                  <FileText className="w-5 h-5 text-zinc-500" />
+                </div>
+              )}
               <button 
-                onClick={() => setPendingAttachments(prev => prev.filter((_, idx) => idx !== i))}
-                className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => setPendingAttachments(prev => prev.filter(p => p.id !== att.id))}
+                className="absolute -top-1.5 -right-1.5 bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-red-400 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-xl"
               >
                 <X className="w-2.5 h-2.5" />
               </button>

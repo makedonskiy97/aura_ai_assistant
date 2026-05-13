@@ -24,11 +24,11 @@ export default function ChatContainer({ session, settings, onUpdateSession }: Ch
 
   const handleSendMessage = async (content: string, files: FileContext[]) => {
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
       content,
       timestamp: Date.now(),
-      attachments: files.filter(f => f.type.startsWith('image/')).map(f => f.content)
+      attachments: files
     };
 
     const newMessages = [...session.messages, userMessage];

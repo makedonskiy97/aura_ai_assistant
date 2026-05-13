@@ -225,6 +225,11 @@ ipcMain.handle('get-clipboard-formats', () => {
   return clipboard.availableFormats();
 });
 
+ipcMain.handle('show-open-dialog', async (event, options) => {
+  const { dialog } = require('electron');
+  return await dialog.showOpenDialog(options);
+});
+
 ipcMain.on('toggle-overlay', () => {
   console.log('IPC: toggle-overlay');
   if (overlayWindow && !overlayWindow.isDestroyed()) {

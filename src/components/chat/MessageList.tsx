@@ -80,14 +80,31 @@ function MessageItem({ message }: { message: Message }) {
         </div>
 
         {message.attachments && message.attachments.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-4">
-            {message.attachments.map((url, i) => (
-              <div key={i} className="relative group/img">
-                <img 
-                  src={url} 
-                  alt="Attachment" 
-                  className="max-w-[240px] max-h-[240px] rounded-xl border border-zinc-800 shadow-xl transition-all hover:scale-[1.01]" 
-                />
+          <div className="flex flex-wrap gap-3 mt-4">
+            {message.attachments.map((file) => (
+              <div key={file.id} className="relative group/attachment flex flex-col gap-2">
+                {file.type.startsWith('image/') ? (
+                   <div className="relative rounded-2xl overflow-hidden border border-zinc-800 shadow-2xl transition-all hover:scale-[1.01] bg-zinc-900 max-w-[400px]">
+                     <img src={file.content} alt={file.name} className="w-full h-auto object-contain max-h-[400px]" />
+                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/attachment:opacity-100 flex items-center justify-center transition-opacity">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-white bg-black/50 px-3 py-1.5 rounded-full backdrop-blur-sm shadow-xl">
+                          {file.name}
+                        </span>
+                     </div>
+                   </div>
+                ) : (
+                  <div className="px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl flex items-center gap-3 min-w-[200px] max-w-[300px] shadow-lg group-hover/attachment:border-indigo-500/30 transition-all">
+                    <div className="w-10 h-10 rounded-lg bg-zinc-950 border border-zinc-800 flex items-center justify-center shrink-0">
+                      <FileText className="w-5 h-5 text-indigo-400" />
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-xs font-bold text-zinc-200 truncate">{file.name}</span>
+                      <span className="text-[9px] font-medium text-zinc-500 uppercase tracking-widest">
+                        {(file.size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
