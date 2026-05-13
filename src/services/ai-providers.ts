@@ -52,32 +52,73 @@ export class GeminiProvider implements AIProvider {
 
 export class OllamaProvider implements AIProvider {
   async *streamMessage(messages: Message[], options: any): AsyncGenerator<string> {
-    const url = options.url || "http://localhost:11434";
+    const url = (options.url || "http://localhost:11434").replace(/\/$/, "");
+    
+    // Prepare images for the last message if any files are images
+    const images: string[] = [];
+    if (options.files) {
+      options.files.forEach((f: FileContext) => {
+        if (f.type.startsWith('image/')) {
+          const base64 = f.content.split(',')[1] || f.content;
+          images.push(base64);
+        }
+      });
+    }
+
+    const formattedMessages = messages.map((m, idx) => {
+      const msg: any = { role: m.role, content: m.content };
+      // Ollama expects images in the message object
+      if (idx === messages.length - 1 && images.length > 0) {
+        msg.images = images;
+      }
+      return msg;
+    });
+
     const body = {
       model: options.model,
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
+      messages: formattedMessages,
       stream: true,
     };
 
-    const response = await fetch(`${url}/api/chat`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
+    try {
+      const response = await fetch(`${url}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
 
-    if (!response.body) return;
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = decoder.decode(value, { stream: true });
-      try {
-        const json = JSON.parse(chunk);
-        if (json.message?.content) yield json.message.content;
-      } catch (e) {
-        // Handle split JSON chunks if necessary
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: response.statusText }));
+        throw new Error(errorData.error || `Ollama error: ${response.status}`);
       }
+
+      if (!response.body) return;
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        // Handle potentially multiple JSON objects in one chunk
+        const lines = chunk.split('\n').filter(l => l.trim());
+        
+        for (const line of lines) {
+          try {
+            const json = JSON.parse(line);
+            if (json.error) throw new Error(json.error);
+            if (json.message?.content) yield json.message.content;
+          } catch (e) {
+            console.error("Error parsing Ollama chunk:", e, line);
+          }
+        }
+      }
+    } catch (err: any) {
+      if (err.name === 'TypeError' && err.message.includes('fetch')) {
+        throw new Error("Ollama is offline or unreachable at " + url);
+      }
+      throw err;
     }
   }
 

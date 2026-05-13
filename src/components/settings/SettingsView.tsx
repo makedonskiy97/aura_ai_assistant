@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowLeft, Save, Globe, Cpu, Palette, Info, ExternalLink } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Save, Globe, Cpu, Palette, Info, ExternalLink, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AppSettings, ProviderType } from '../../types';
 
 interface SettingsViewProps {
@@ -10,6 +10,36 @@ interface SettingsViewProps {
 
 export default function SettingsView({ settings, onSave, onBack }: SettingsViewProps) {
   const [formData, setFormData] = useState<AppSettings>(settings);
+  const [ollamaStatus, setOllamaStatus] = useState<'idle' | 'loading' | 'connected' | 'error'>('idle');
+  const [ollamaModels, setOllamaModels] = useState<string[]>([]);
+  const [errorMessage, setErrorMessage] = useState<string>('');
+
+  const testOllamaConnection = async (url: string) => {
+    setOllamaStatus('loading');
+    setErrorMessage('');
+    try {
+      const cleanUrl = url.replace(/\/$/, "");
+      const response = await fetch(`${cleanUrl}/api/tags`);
+      if (!response.ok) throw new Error("Server responded with " + response.status);
+      
+      const data = await response.json();
+      const models = data.models?.map((m: any) => m.name) || [];
+      setOllamaModels(models);
+      setOllamaStatus(models.length > 0 ? 'connected' : 'error');
+      if (models.length === 0) {
+        setErrorMessage("Connected, but no models found. Run 'ollama pull <model>' first.");
+      }
+    } catch (err: any) {
+      setOllamaStatus('error');
+      setErrorMessage(err.message.includes('fetch') ? "Ollama is offline or unreachable" : err.message);
+    }
+  };
+
+  useEffect(() => {
+    if (formData.provider === ProviderType.OLLAMA) {
+      testOllamaConnection(formData.ollamaUrl);
+    }
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,25 +140,55 @@ export default function SettingsView({ settings, onSave, onBack }: SettingsViewP
               </div>
             ) : (
               <div className="space-y-6 pt-6 border-t border-zinc-800">
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Connection Endpoint</label>
-                  <input 
-                    type="text"
-                    value={formData.ollamaUrl}
-                    onChange={(e) => setFormData({ ...formData, ollamaUrl: e.target.value })}
-                    placeholder="http://localhost:11434"
-                    className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200 focus:ring-2 focus:ring-emerald-500/20"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Model Manifest</label>
-                  <input 
-                    type="text"
-                    value={formData.ollamaModel}
-                    onChange={(e) => setFormData({ ...formData, ollamaModel: e.target.value })}
-                    placeholder="e.g. llama3, mistral"
-                    className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200"
-                  />
+                <div className="flex flex-col gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Connection Endpoint</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text"
+                        value={formData.ollamaUrl}
+                        onChange={(e) => setFormData({ ...formData, ollamaUrl: e.target.value })}
+                        placeholder="http://localhost:11434"
+                        className="flex-1 px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200 focus:ring-2 focus:ring-emerald-500/20"
+                      />
+                      <button 
+                        type="button"
+                        onClick={() => testOllamaConnection(formData.ollamaUrl)}
+                        disabled={ollamaStatus === 'loading'}
+                        className="px-4 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-400 hover:text-white transition-all disabled:opacity-50"
+                      >
+                        <RefreshCw className={`w-4 h-4 ${ollamaStatus === 'loading' ? 'animate-spin' : ''}`} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {ollamaStatus !== 'idle' && (
+                    <div className={`flex items-center gap-2 p-3 rounded-xl border text-xs font-bold uppercase tracking-wider ${
+                      ollamaStatus === 'connected' 
+                      ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' 
+                      : ollamaStatus === 'error' 
+                        ? 'bg-red-500/10 border-red-500/20 text-red-500' 
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-400'
+                    }`}>
+                      {ollamaStatus === 'connected' ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                      {ollamaStatus === 'connected' ? 'Connected' : ollamaStatus === 'error' ? (errorMessage || 'Offline') : 'Connecting...'}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Selected Model</label>
+                    <select 
+                      value={formData.ollamaModel}
+                      onChange={(e) => setFormData({ ...formData, ollamaModel: e.target.value })}
+                      className="w-full px-4 py-3 bg-zinc-950 border border-zinc-800 rounded-xl text-sm text-zinc-200"
+                    >
+                      {ollamaModels.length > 0 ? (
+                        ollamaModels.map(m => <option key={m} value={m}>{m}</option>)
+                      ) : (
+                        <option value={formData.ollamaModel}>{formData.ollamaModel || 'No models found'}</option>
+                      )}
+                    </select>
+                  </div>
                 </div>
               </div>
             )}

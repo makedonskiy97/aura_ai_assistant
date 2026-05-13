@@ -72,9 +72,14 @@ export default function ChatContainer({ session, settings, onUpdateSession }: Ch
       }
     } catch (error: any) {
       console.error("AI Error:", error);
+      const errorMessageValue = error.message || "Failed to get response";
       onUpdateSession({
         ...updatedSession,
-        messages: [...newMessages, { ...assistantMessage, content: `Error: ${error.message || "Failed to get response"}` }]
+        messages: [...newMessages, { 
+          ...assistantMessage, 
+          content: `ERROR: ${errorMessageValue}`,
+          isError: true 
+        } as any]
       });
     } finally {
       setIsStreaming(false);

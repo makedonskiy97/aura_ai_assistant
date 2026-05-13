@@ -9,6 +9,7 @@ export interface Message {
   content: string;
   timestamp: number;
   attachments?: string[]; // URLs or base64
+  isError?: boolean;
 }
 
 export interface FileContext {

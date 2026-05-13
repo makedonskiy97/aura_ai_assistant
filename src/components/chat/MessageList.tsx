@@ -40,7 +40,7 @@ function MessageItem({ message }: { message: Message }) {
       <div className="flex-1 min-w-0">
         <div className={`prose dark:prose-invert max-w-none text-sm leading-relaxed ${
           isAssistant 
-          ? 'bg-zinc-900/50 p-5 rounded-2xl border border-zinc-800 text-zinc-300 shadow-sm' 
+          ? `${message.isError ? 'bg-red-500/10 border-red-500/30 text-red-400' : 'bg-zinc-900/50 border-zinc-800 text-zinc-300'} p-5 rounded-2xl border shadow-sm` 
           : 'text-zinc-200 py-2'
         }`}>
           {isAssistant ? (
