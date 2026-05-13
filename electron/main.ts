@@ -196,27 +196,34 @@ ipcMain.handle('capture-screen', async () => {
 ipcMain.handle('read-clipboard-image', () => {
   const { clipboard } = require('electron');
   const formats = clipboard.availableFormats();
-  console.log('Clipboard: Requested image read. Available formats:', formats);
+  console.log('[Main] Clipboard available formats:', formats);
   
-  // Try standard image read
+  // 1. Try standard high-level read
   const image = clipboard.readImage();
   if (!image.isEmpty()) {
-    console.log('Clipboard: Successfully read image via readImage()');
+    console.log('[Main] Image read successful via clipboard.readImage()');
     return image.toDataURL();
   }
 
-  // Fallback to raw buffers if standard read fails (common on some Linux sessions)
-  if (formats.includes('image/png')) {
-    console.log('Clipboard: Falling back to image/png buffer');
-    const buffer = clipboard.readBuffer('image/png');
-    return `data:image/png;base64,${buffer.toString('base64')}`;
-  } else if (formats.includes('image/jpeg')) {
-    console.log('Clipboard: Falling back to image/jpeg buffer');
-    const buffer = clipboard.readBuffer('image/jpeg');
-    return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+  // 2. Fallback to specific buffers (common on Linux/Wayland or complex clipboard states)
+  const imageFormats = formats.filter(f => f.toLowerCase().includes('image') || f.toLowerCase().includes('png') || f.toLowerCase().includes('jpeg') || f.toLowerCase().includes('bmp'));
+  
+  if (imageFormats.length > 0) {
+    console.log('[Main] Found image-like formats in buffers:', imageFormats);
+    // Prioritize PNG for quality, then others
+    const targetFormat = imageFormats.find(f => f.includes('png')) || imageFormats[0];
+    try {
+      const buffer = clipboard.readBuffer(targetFormat);
+      if (buffer && buffer.length > 0) {
+        const mimeType = targetFormat.includes('/') ? targetFormat : `image/${targetFormat.toLowerCase()}`;
+        return `data:${mimeType};base64,${buffer.toString('base64')}`;
+      }
+    } catch (e) {
+      console.error('[Main] Buffer read failed for', targetFormat, e);
+    }
   }
 
-  console.warn('Clipboard: No image formats found');
+  console.warn('[Main] No valid image data found in clipboard');
   return null;
 });
 

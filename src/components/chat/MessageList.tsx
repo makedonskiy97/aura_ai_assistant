@@ -121,16 +121,26 @@ function MessageItem({ message }: { message: Message }) {
             </button>
             
             {isAssistant && message.metrics && (
-              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4">
-                 <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">
-                    <Timer className="w-3 h-3 text-zinc-600" />
-                    <span>{message.metrics.timeSeconds.toFixed(1)}s</span>
-                 </div>
-                 {message.metrics.tokensPerSecond && (
-                   <div className="flex items-center gap-1 text-[9px] font-bold text-zinc-500 uppercase tracking-tighter">
-                      <Zap className="w-3 h-3 text-amber-500/50" />
-                      <span>{message.metrics.tokensPerSecond.toFixed(1)} tok/s</span>
+              <div className="flex items-center gap-3 border-l border-zinc-800 pl-4 py-0.5">
+                 <div className="flex flex-col">
+                   <span className="text-[8px] font-sans font-medium text-zinc-600 uppercase tracking-widest leading-none mb-1">Duration</span>
+                   <div className="flex items-center gap-1 text-[9px] font-mono font-medium text-zinc-400 tracking-tighter">
+                      <Timer className="w-2.5 h-2.5 text-zinc-600" />
+                      <span>{message.metrics.timeSeconds.toFixed(1)}s</span>
                    </div>
+                 </div>
+                 
+                 {message.metrics.tokensPerSecond && (
+                   <>
+                     <div className="h-6 w-[1px] bg-zinc-800/50 mx-1"></div>
+                     <div className="flex flex-col">
+                       <span className="text-[8px] font-sans font-medium text-zinc-600 uppercase tracking-widest leading-none mb-1">Velocity</span>
+                       <div className="flex items-center gap-1 text-[9px] font-mono font-medium text-zinc-400 tracking-tighter">
+                          <Zap className="w-2.5 h-2.5 text-amber-500/40" />
+                          <span>{message.metrics.tokensPerSecond.toFixed(1)} <span className="text-[8px] text-zinc-600 uppercase">tok/s</span></span>
+                       </div>
+                     </div>
+                   </>
                  )}
               </div>
             )}

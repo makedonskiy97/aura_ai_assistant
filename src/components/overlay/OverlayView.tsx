@@ -24,6 +24,37 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
   useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      console.log('[Overlay] Paste event detected');
+      const items = e.clipboardData?.items;
+      let rendererSeesImage = false;
+      if (items) {
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.indexOf('image') !== -1) {
+            rendererSeesImage = true;
+            break;
+          }
+        }
+      }
+
+      if (rendererSeesImage) {
+        handlePasteClipboard();
+        return;
+      }
+
+      if (window.electron) {
+        const formats = await window.electron.getClipboardFormats();
+        if (formats.some(f => f.toLowerCase().includes('image') || f.toLowerCase().includes('png'))) {
+          handlePasteClipboard();
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
+  useEffect(() => {
     if (window.electron) {
       const cleanupCapture = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
         console.log('Overlay: global capture received');

@@ -113,6 +113,9 @@ export class OllamaProvider implements AIProvider {
       const decoder = new TextDecoder();
 
       while (true) {
+        if (options.signal?.aborted) {
+          throw new Error("Generation stopped by user");
+        }
         const { done, value } = await reader.read();
         if (done) break;
         
