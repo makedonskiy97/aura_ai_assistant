@@ -193,6 +193,13 @@ ipcMain.handle('capture-screen', async () => {
   return sources[0].thumbnail.toDataURL();
 });
 
+ipcMain.handle('read-clipboard-image', () => {
+  const { clipboard } = require('electron');
+  const image = clipboard.readImage();
+  if (image.isEmpty()) return null;
+  return image.toDataURL();
+});
+
 ipcMain.on('toggle-overlay', () => {
   console.log('IPC: toggle-overlay');
   if (overlayWindow && !overlayWindow.isDestroyed()) {

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Send, Paperclip, Camera, X, FileText, Image as ImageIcon, ScreenShare } from 'lucide-react';
+import { Send, Paperclip, Camera, X, FileText, Image as ImageIcon, ScreenShare, ClipboardPaste } from 'lucide-react';
 import { FileContext } from '../../types';
 import { processFile } from '../../services/file-processor';
 import SelectionOverlay from './SelectionOverlay';
@@ -83,6 +83,46 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
     }
   };
 
+  const handlePasteClipboard = async () => {
+    if (window.electron) {
+      try {
+        const dataUrl = await window.electron.readClipboardImage();
+        if (dataUrl) {
+          setFiles(prev => [...prev, {
+            name: `clipboard-${Date.now()}.png`,
+            content: dataUrl,
+            type: 'image/png',
+            size: 0
+          }]);
+        } else {
+          // You could add a toast or error state here
+          console.log('No image found in clipboard');
+        }
+      } catch (err) {
+        console.error('Failed to read clipboard:', err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      if (document.activeElement?.tagName === 'TEXTAREA') {
+        const items = e.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+              handlePasteClipboard();
+              break;
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
   const removeFile = (index: number) => {
     setFiles(files.filter((_, i) => i !== index));
   };
@@ -155,6 +195,14 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
                 title="Capture screen region"
               >
                 <Camera className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={handlePasteClipboard}
+                className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-indigo-400"
+                title="Paste image from clipboard"
+              >
+                <ClipboardPaste className="w-5 h-5" />
               </button>
             </div>
             <button

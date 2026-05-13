@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare, Paperclip } from 'lucide-react';
+import { Bot, Send, Camera, X, Maximize2, Sparkles, ScreenShare, Paperclip, ClipboardPaste } from 'lucide-react';
 import { Message, AppSettings, ProviderType } from '../../types';
 import { GeminiProvider, OllamaProvider } from '../../services/ai-providers';
 import SelectionOverlay from '../chat/SelectionOverlay';
@@ -179,6 +179,43 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     }
   };
 
+  const handlePasteClipboard = async () => {
+    if (window.electron) {
+      try {
+        const dataUrl = await window.electron.readClipboardImage();
+        if (dataUrl) {
+          console.log('Overlay: Pasted image from clipboard');
+          setPendingAttachments(prev => [...prev, dataUrl]);
+        } else {
+          setError('No image found in clipboard');
+          setTimeout(() => setError(null), 3000);
+        }
+      } catch (err) {
+        console.error('Overlay: Failed to read clipboard:', err);
+      }
+    }
+  };
+
+  useEffect(() => {
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only paste if overlay is visible (rendered) and input is focused
+      if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') {
+        const items = e.clipboardData?.items;
+        if (items) {
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.indexOf('image') !== -1) {
+              handlePasteClipboard();
+              break;
+            }
+          }
+        }
+      }
+    };
+
+    window.addEventListener('paste', handlePaste);
+    return () => window.removeEventListener('paste', handlePaste);
+  }, []);
+
   return (
     <div className="h-screen w-full flex flex-col bg-zinc-900 border border-indigo-500/50 rounded-xl overflow-hidden shadow-2xl drag transform scale-[0.98]">
       <input 
@@ -237,6 +274,13 @@ export default function OverlayView({ settings }: OverlayViewProps) {
             title="Desktop Screenshot (Region)"
           >
             <Camera className="w-3.5 h-3.5" />
+          </button>
+          <button 
+            onClick={handlePasteClipboard}
+            className="p-1.5 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-400 hover:text-indigo-400" 
+            title="Paste Screenshot from Clipboard"
+          >
+            <ClipboardPaste className="w-3.5 h-3.5" />
           </button>
           <button 
             onClick={() => window.electron?.ipcRenderer.send('toggle-overlay')}
