@@ -20,7 +20,11 @@
   }
   
   pre {
-    @apply scrollbar-hide;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  pre::-webkit-scrollbar {
+    display: none;
   }
 }
 
