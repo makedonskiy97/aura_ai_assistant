@@ -13,6 +13,7 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   const [isSelecting, setIsSelecting] = useState(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
   const [scaleFactor, setScaleFactor] = useState(1);
+  const [platformInfo, setPlatformInfo] = useState<{ platform: string; sessionType?: string } | null>(null);
 
   const handleConfirm = async (rect: { x: number; y: number; width: number; height: number }) => {
     if (!backgroundImage) return;
@@ -56,7 +57,14 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
         setBackgroundImage(dataUrl);
         setScaleFactor(scale || 1);
       });
-      return () => cleanup();
+      const cleanupReady = window.electron.ipcRenderer.on('capture-ready', (info: any) => {
+        console.log('CaptureOverlay: ready signal received', info);
+        if (info) setPlatformInfo(info);
+      });
+      return () => {
+        cleanup();
+        cleanupReady();
+      };
     }
   }, []);
   
@@ -114,15 +122,21 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   return (
     <div 
-      className="fixed inset-0 z-[99999] cursor-crosshair overflow-hidden select-none bg-black/10 no-drag pointer-events-auto"
+      className="fixed inset-0 z-[100000] cursor-crosshair overflow-hidden select-none bg-black/10 no-drag pointer-events-auto"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {!backgroundImage && (
-        <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center text-center no-drag pointer-events-auto z-[99999]">
+        <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center text-center no-drag pointer-events-none z-[100001]">
           <div className="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4" />
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">Initializing Capture...</p>
+          {platformInfo?.platform === 'linux' && (
+            <p className="text-[8px] text-zinc-500 mt-4 max-w-[200px]">
+              Linux detected ({platformInfo.sessionType}). 
+              If stuck, ensure xdg-desktop-portal is installed and answer any system prompts.
+            </p>
+          )}
         </div>
       )}
 

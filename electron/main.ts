@@ -246,12 +246,14 @@ ipcMain.on('start-capture', async () => {
     // Find the source that matches the screen or take the first one
     const source = sources.find(s => s.display_id === display.id.toString()) || 
                    sources.find(s => s.name.toLowerCase().includes('screen')) ||
+                   sources.find(s => s.name.toLowerCase().includes('entire')) ||
                    sources[0];
     
     if (!source) {
+      console.log('Capture: No source found in list of', sources.length);
       throw new Error(
         process.platform === 'linux' && process.env.XDG_SESSION_TYPE === 'wayland'
-          ? 'No capture sources found. Wayland detected - ensure PipeWire and xdg-desktop-portal are configured.'
+          ? 'Wayland detected: Ensure PipeWire and xdg-desktop-portal are configured. Try selecting "Entire Screen" if prompted.'
           : 'No screen capture sources found.'
       );
     }
@@ -278,12 +280,20 @@ ipcMain.on('start-capture', async () => {
         }, 100);
       });
       win?.once('ready-to-show', () => {
+        console.log('Capture: win ready-to-show');
         win?.show();
         win?.focus();
-        win?.setAlwaysOnTop(true, 'screen-saver');
+        if (process.platform === 'darwin') {
+          win?.setAlwaysOnTop(true, 'screen-saver');
+        } else {
+          win?.setAlwaysOnTop(true, 'status');
+        }
         win?.setIgnoreMouseEvents(false);
         // Signal that the interface is ready for interaction
-        broadcast('capture-ready');
+        broadcast('capture-ready', {
+          platform: process.platform,
+          sessionType: process.env.XDG_SESSION_TYPE
+        });
       });
     }
 
