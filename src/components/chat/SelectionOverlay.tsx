@@ -12,6 +12,7 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   const [current, setCurrent] = useState<{ x: number; y: number } | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [scaleFactor, setScaleFactor] = useState(1);
 
   const handleConfirm = async (rect: { x: number; y: number; width: number; height: number }) => {
     if (!backgroundImage) return;
@@ -22,12 +23,23 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
       await new Promise((resolve) => (img.onload = resolve));
 
       const canvas = document.createElement('canvas');
-      canvas.width = rect.width;
-      canvas.height = rect.height;
+      // Use physical pixels for output quality
+      canvas.width = rect.width * scaleFactor;
+      canvas.height = rect.height * scaleFactor;
       const ctx = canvas.getContext('2d');
       
       if (ctx) {
-        ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+        ctx.drawImage(
+          img, 
+          rect.x * scaleFactor, 
+          rect.y * scaleFactor, 
+          rect.width * scaleFactor, 
+          rect.height * scaleFactor, 
+          0, 
+          0, 
+          rect.width * scaleFactor, 
+          rect.height * scaleFactor
+        );
         const croppedDataUrl = canvas.toDataURL('image/png');
         onCapture(croppedDataUrl);
       }
@@ -38,8 +50,10 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   useEffect(() => {
     if (window.electron) {
-      const cleanup = window.electron.ipcRenderer.on('set-capture-bg', (dataUrl: string) => {
+      const cleanup = window.electron.ipcRenderer.on('set-capture-bg', (dataUrl: string, scale: number) => {
+        console.log('CaptureOverlay: bg received, scale:', scale);
         setBackgroundImage(dataUrl);
+        setScaleFactor(scale || 1);
       });
       return () => cleanup();
     }

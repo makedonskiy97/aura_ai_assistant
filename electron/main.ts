@@ -215,19 +215,26 @@ ipcMain.on('start-capture', async () => {
     // Wait bit longer for windows to hide completely to avoid flicker or ghosting
     await new Promise(resolve => setTimeout(resolve, 250));
 
+    const display = screen.getPrimaryDisplay();
+    const scaleFactor = display.scaleFactor;
+    const { width, height } = display.size;
+
     const sources = await desktopCapturer.getSources({ 
       types: ['screen'], 
-      thumbnailSize: screen.getPrimaryDisplay().size 
+      thumbnailSize: {
+        width: width * scaleFactor,
+        height: height * scaleFactor
+      }
     });
     
     if (sources.length === 0) throw new Error('No screen capture sources found');
     
     const bgImage = sources[0].thumbnail.toDataURL();
-    console.log('Capture: screenshot taken, length:', bgImage.length);
+    console.log('Capture: screenshot taken, length:', bgImage.length, 'Scale:', scaleFactor);
 
     if (selectionWindow && !selectionWindow.isDestroyed()) {
       console.log('Capture: using existing selection window');
-      selectionWindow.webContents.send('set-capture-bg', bgImage);
+      selectionWindow.webContents.send('set-capture-bg', bgImage, scaleFactor);
       selectionWindow.show();
       selectionWindow.focus();
       selectionWindow.setAlwaysOnTop(true, 'screen-saver');
@@ -237,7 +244,7 @@ ipcMain.on('start-capture', async () => {
       const win = selectionWindow;
       win?.webContents.on('did-finish-load', () => {
         console.log('Capture: selection window finished load, sending bg');
-        win?.webContents.send('set-capture-bg', bgImage);
+        win?.webContents.send('set-capture-bg', bgImage, scaleFactor);
       });
       win?.once('ready-to-show', () => {
         console.log('Capture: selection window ready to show');
@@ -247,18 +254,16 @@ ipcMain.on('start-capture', async () => {
       });
     }
 
-    // Restore windows immediately after triggering selection
-    if (wasMainVisible) mainWindow?.show();
-    if (wasOverlayVisible) {
-      overlayWindow?.show();
-      overlayWindow?.focus();
-    }
+    // DO NOT restore windows here - wait for result or close-selection
   } catch (err) {
     console.error('Capture: failed during initialization', err);
+    // Restore windows on error
     if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show();
       mainWindow.webContents.send('capture-error', 'Failed to start screen capture');
     }
     if (overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.show();
       overlayWindow.webContents.send('capture-error', 'Failed to start screen capture');
     }
   }
@@ -279,10 +284,28 @@ ipcMain.on('close-selection', () => {
   if (selectionWindow && !selectionWindow.isDestroyed()) {
     selectionWindow.close();
   }
+  
+  // Broadcast cancellation
+  broadcast('on-capture-cancelled');
+
+  // Restore windows
+  BrowserWindow.getAllWindows().forEach(win => {
+    if (win !== selectionWindow && !win.isDestroyed()) {
+      win.show();
+    }
+  });
 });
 
 ipcMain.on('capture-result', (event, dataUrl) => {
   console.log('Capture: complete, size:', dataUrl.length);
+  
+  // Show windows BEFORE sending result
+  BrowserWindow.getAllWindows().forEach(win => {
+    if (win !== selectionWindow && !win.isDestroyed()) {
+      win.show();
+    }
+  });
+
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('on-capture-complete', dataUrl);
   }
@@ -290,6 +313,7 @@ ipcMain.on('capture-result', (event, dataUrl) => {
     overlayWindow.webContents.send('on-capture-complete', dataUrl);
     overlayWindow.focus();
   }
+  
   if (selectionWindow && !selectionWindow.isDestroyed()) {
     selectionWindow.close();
   }

@@ -19,23 +19,37 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    console.log('Overlay: Initialized with settings:', {
+      provider: settings.provider,
+      gemini: settings.geminiModel,
+      ollama: settings.ollamaModel
+    });
+  }, []);
+
+  useEffect(() => {
     if (window.electron) {
       const cleanupCapture = window.electron.ipcRenderer.on('on-capture-complete', (dataUrl: string) => {
-        console.log('Overlay: global capture received');
+        console.log('Overlay: global capture received, size:', dataUrl.length);
         setPendingAttachments(prev => [...prev, dataUrl]);
         setIsCapturing(false);
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
-        console.error('Overlay: capture error:', msg);
+        console.error('Overlay: capture error event received:', msg);
         setError(msg);
         setIsCapturing(false);
-        setTimeout(() => setError(null), 3000);
+        setTimeout(() => setError(null), 5000);
+      });
+
+      const cleanupCancel = window.electron.ipcRenderer.on('on-capture-cancelled', () => {
+        console.log('Overlay: capture cancelled event received');
+        setIsCapturing(false);
       });
 
       return () => {
         cleanupCapture();
         cleanupError();
+        cleanupCancel();
       };
     }
   }, []);
@@ -46,6 +60,9 @@ export default function OverlayView({ settings }: OverlayViewProps) {
 
   const handleSend = async () => {
     if ((!input.trim() && pendingAttachments.length === 0) || isStreaming) return;
+
+    const providerModel = settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel;
+    console.log(`Overlay: REQUEST START - Model: ${providerModel}, Provider: ${settings.provider}`);
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -58,11 +75,9 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
     setInput('');
+    const currentAttachments = [...pendingAttachments];
     setPendingAttachments([]);
     setIsStreaming(true);
-
-    const providerModel = settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel;
-    console.log(`Overlay: sending message using model: ${providerModel} (Provider: ${settings.provider})`);
 
     const provider = settings.provider === ProviderType.GEMINI ? new GeminiProvider() : new OllamaProvider();
     let assistantContent = "";
@@ -78,11 +93,11 @@ export default function OverlayView({ settings }: OverlayViewProps) {
 
     try {
       const stream = provider.streamMessage(newMessages, {
-        model: settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel,
+        model: providerModel,
         key: settings.geminiKey,
         url: settings.ollamaUrl,
-        files: pendingAttachments.map(dataUrl => ({
-          name: 'capture.png',
+        files: currentAttachments.map((dataUrl, i) => ({
+          name: `capture-${i}.png`,
           type: 'image/png',
           content: dataUrl,
           size: 0
@@ -93,7 +108,9 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         assistantContent += chunk;
         setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { ...m, content: assistantContent } : m));
       }
+      console.log('Overlay: REQUEST SUCCESS');
     } catch (err: any) {
+      console.error('Overlay: REQUEST FAILED', err);
       setMessages(prev => prev.map(m => m.id === assistantMessage.id ? { 
         ...m, 
         content: `Error: ${err.message || "Failed to get response"}`,
@@ -143,10 +160,24 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       />
       
       {isCapturing && (
-        <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200 no-drag">
-          <div className="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4" />
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Capturing Desktop...</p>
-          <p className="text-[8px] text-zinc-500 mt-2">Wait for the selection overlay to appear</p>
+        <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-md flex flex-col items-center justify-center text-center animate-in fade-in duration-300 no-drag">
+          <div className="relative mb-6">
+            <div className="w-16 h-16 rounded-full border-4 border-indigo-500/10 border-t-indigo-500 animate-spin" />
+            <Camera className="absolute inset-0 m-auto w-6 h-6 text-indigo-400 animate-pulse" />
+          </div>
+          <h3 className="text-sm font-bold uppercase tracking-[0.3em] text-white mb-2">Preparing Screen</h3>
+          <p className="text-[10px] text-zinc-400 max-w-[200px] leading-relaxed">
+            Please wait while we prepare the selection interface...
+          </p>
+          <button 
+            onClick={() => {
+              setIsCapturing(false);
+              window.electron?.ipcRenderer.send('close-selection');
+            }}
+            className="mt-8 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-all border border-zinc-700"
+          >
+            Cancel Capture
+          </button>
         </div>
       )}
 
@@ -154,7 +185,15 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         <div className="w-4 h-4 rounded bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
           <Sparkles className="w-2.5 h-2.5 text-white" />
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-300">Nexus Overlay</span>
+        <div className="flex flex-col">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-300">Nexus Overlay</span>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            <div className={`w-1 h-1 rounded-full ${settings.provider === ProviderType.GEMINI ? 'bg-blue-400' : 'bg-orange-400'}`} />
+            <span className="text-[8px] text-zinc-500 font-medium uppercase tracking-widest">
+              {settings.provider === ProviderType.GEMINI ? settings.geminiModel : settings.ollamaModel}
+            </span>
+          </div>
+        </div>
         <div className="ml-auto flex items-center gap-1 no-drag">
           <button 
             onClick={handleGlobalCapture}

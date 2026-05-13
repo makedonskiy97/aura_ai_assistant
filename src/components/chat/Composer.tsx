@@ -32,9 +32,14 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
         setIsCapturing(false);
       });
 
+      const cleanupCancel = window.electron.ipcRenderer.on('on-capture-cancelled', () => {
+        setIsCapturing(false);
+      });
+
       return () => {
         cleanup();
         cleanupError();
+        cleanupCancel();
       };
     }
   }, []);
