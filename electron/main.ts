@@ -232,6 +232,17 @@ ipcMain.on('start-capture', async () => {
       console.log('Capture: Linux detected, session type:', process.env.XDG_SESSION_TYPE);
     }
 
+    // On Linux/Wayland, sometimes getSources hangs if no window is visible.
+    // We create the selection window EARLY but keep it hidden or fully transparent initially.
+    if (!selectionWindow || selectionWindow.isDestroyed()) {
+      console.log('Capture: Pre-creating selection window');
+      createSelectionWindow();
+      selectionWindow?.setOpacity(0);
+      selectionWindow?.show();
+    }
+
+    broadcast('capture-status', 'requested');
+
     const sources = await desktopCapturer.getSources({ 
       types: ['screen', 'window'], // Sometimes window type is needed to trigger the portal on Wayland
       thumbnailSize: {
@@ -261,40 +272,41 @@ ipcMain.on('start-capture', async () => {
     const bgImage = source.thumbnail.toDataURL();
     console.log('Capture: screenshot taken, length:', bgImage.length);
 
-    if (selectionWindow && !selectionWindow.isDestroyed()) {
-      console.log('Capture: using existing selection window');
-      selectionWindow.setBounds(display.bounds);
-      selectionWindow.webContents.send('set-capture-bg', bgImage, scaleFactor);
-      selectionWindow.show();
-      selectionWindow.focus();
+    const win = selectionWindow;
+    if (win && !win.isDestroyed()) {
+      console.log('Capture: configuring selection window');
+      win.setBounds(display.bounds);
+      win.setOpacity(1);
+      
+      const sendBg = () => {
+        console.log('Capture: sending bg to window');
+        win.webContents.send('set-capture-bg', bgImage, scaleFactor);
+      };
+
+      if (win.webContents.isLoading()) {
+        win.webContents.on('did-finish-load', sendBg);
+      } else {
+        sendBg();
+      }
+
+      win.show();
+      win.focus();
+      
+      if (process.platform === 'darwin') {
+        win.setAlwaysOnTop(true, 'screen-saver');
+      } else {
+        win.setAlwaysOnTop(true, 'status');
+      }
+      
+      win.setIgnoreMouseEvents(false);
+      
+      // Signal that the interface is ready for interaction
+      broadcast('capture-ready', {
+        platform: process.platform,
+        sessionType: process.env.XDG_SESSION_TYPE
+      });
     } else {
-      console.log('Capture: creating new selection window');
-      createSelectionWindow();
-      const win = selectionWindow;
-      win?.setBounds(display.bounds);
-      win?.webContents.on('did-finish-load', () => {
-        console.log('Capture: selection window finished load');
-        // Small delay to ensure the component is mounted
-        setTimeout(() => {
-          win?.webContents.send('set-capture-bg', bgImage, scaleFactor);
-        }, 100);
-      });
-      win?.once('ready-to-show', () => {
-        console.log('Capture: win ready-to-show');
-        win?.show();
-        win?.focus();
-        if (process.platform === 'darwin') {
-          win?.setAlwaysOnTop(true, 'screen-saver');
-        } else {
-          win?.setAlwaysOnTop(true, 'status');
-        }
-        win?.setIgnoreMouseEvents(false);
-        // Signal that the interface is ready for interaction
-        broadcast('capture-ready', {
-          platform: process.platform,
-          sessionType: process.env.XDG_SESSION_TYPE
-        });
-      });
+      throw new Error('Selection window lost during capture');
     }
 
     // DO NOT restore windows here - wait for result or close-selection

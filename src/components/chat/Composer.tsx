@@ -14,7 +14,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
-  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -34,6 +34,10 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
         setCapturePhase('ready');
       });
 
+      const cleanupStatus = window.electron.ipcRenderer.on('capture-status', (status: string) => {
+        if (status === 'requested') setCapturePhase('requested');
+      });
+
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
         setIsCapturing(false);
         setCapturePhase('failed');
@@ -47,6 +51,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
       return () => {
         cleanup();
         cleanupReady();
+        cleanupStatus();
         cleanupError();
         cleanupCancel();
       };
@@ -88,7 +93,8 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
         <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200">
           <div className={`w-10 h-10 rounded-full border-4 ${capturePhase === 'ready' ? 'border-green-500/20 border-t-green-500' : 'border-indigo-500/20 border-t-indigo-500'} animate-spin mb-3`} />
           <p className={`text-[10px] font-bold uppercase tracking-widest ${capturePhase === 'ready' ? 'text-green-400' : 'text-indigo-400'}`}>
-            {capturePhase === 'preparing' ? 'Preparing Desktop...' : 'Select Screen Region'}
+            {capturePhase === 'preparing' ? 'Preparing Desktop...' : 
+             capturePhase === 'requested' ? 'Waiting for System...' : 'Select Screen Region'}
           </p>
         </div>
       )}

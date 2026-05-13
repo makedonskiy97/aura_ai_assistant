@@ -18,7 +18,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
   useEffect(() => {
     if (window.electron) {
@@ -33,6 +33,11 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       const cleanupReady = window.electron.ipcRenderer.on('capture-ready', () => {
         console.log('Overlay: capture interface ready');
         setCapturePhase('ready');
+      });
+
+      const cleanupStatus = window.electron.ipcRenderer.on('capture-status', (status: string) => {
+        console.log('Overlay: capture status update:', status);
+        if (status === 'requested') setCapturePhase('requested');
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
@@ -56,6 +61,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       return () => {
         cleanupCapture();
         cleanupReady();
+        cleanupStatus();
         cleanupError();
         cleanupCancel();
       };
@@ -138,16 +144,16 @@ export default function OverlayView({ settings }: OverlayViewProps) {
     // Auto-timeout if selection window never appears
     setTimeout(() => {
       setCapturePhase(prev => {
-        if (prev === 'preparing') {
+        if (prev === 'preparing' || prev === 'requested') {
           console.warn('Overlay: Capture initialization timed out');
-          setError('Capture interface failed to load');
+          setError('Capture interface failed to load. Check PipeWire/Portal settings.');
           setIsCapturing(false);
           setTimeout(() => setError(null), 3000);
           return 'failed';
         }
         return prev;
       });
-    }, 10000);
+    }, 15000); // Increased timeout to 15s for Wayland prompts
   };
 
   const handleFileClick = () => {
@@ -189,11 +195,13 @@ export default function OverlayView({ settings }: OverlayViewProps) {
             <Camera className={`absolute inset-0 m-auto w-6 h-6 ${capturePhase === 'ready' ? 'text-green-400' : 'text-indigo-400'} animate-pulse`} />
           </div>
           <h3 className="text-sm font-bold uppercase tracking-[0.3em] text-white mb-2">
-            {capturePhase === 'preparing' ? 'Preparing Screen' : 'Ready to Select'}
+            {capturePhase === 'preparing' || capturePhase === 'requested' ? 'Preparing Screen' : 'Ready to Select'}
           </h3>
           <p className="text-[10px] text-zinc-400 max-w-[200px] leading-relaxed">
             {capturePhase === 'preparing' 
               ? 'Please wait while we prepare the selection interface...'
+              : capturePhase === 'requested'
+              ? 'Waiting for system permission. Please check for any popups.'
               : 'The selection layer is now active. Drag your mouse across the screen to capture a region.'}
           </p>
           <button 
