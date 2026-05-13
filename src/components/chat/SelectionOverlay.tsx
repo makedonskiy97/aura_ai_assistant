@@ -61,9 +61,12 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   
   const handleMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button')) return;
-    setStart({ x: e.clientX, y: e.clientY });
-    setCurrent({ x: e.clientX, y: e.clientY });
+    const x = e.clientX;
+    const y = e.clientY;
+    setStart({ x, y });
+    setCurrent({ x, y });
     setIsSelecting(true);
+    console.log(`Capture: Start selection at ${x},${y}`);
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -74,6 +77,11 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   const handleMouseUp = () => {
     setIsSelecting(false);
+    if (start && current) {
+      const dx = Math.abs(current.x - start.x);
+      const dy = Math.abs(current.y - start.y);
+      console.log(`Capture: Selection delta ${dx}x${dy}`);
+    }
   };
 
   const getRect = () => {
@@ -90,7 +98,10 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   useEffect(() => {
     const handleKeys = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onCancel();
+      if (e.key === 'Escape') {
+        console.log('Capture: ESC pressed, cancelling');
+        onCancel();
+      }
     };
     window.addEventListener('keydown', handleKeys);
     return () => window.removeEventListener('keydown', handleKeys);
@@ -115,7 +126,9 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
           className="absolute inset-0 pointer-events-none"
           style={{ 
             backgroundImage: `url(${backgroundImage})`,
-            backgroundSize: '100% 100%',
+            backgroundSize: '100vw 100vh',
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
             filter: 'brightness(0.6)'
           }}
         />

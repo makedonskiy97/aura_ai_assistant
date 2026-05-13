@@ -19,11 +19,25 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    console.log('Overlay: Initialized with settings:', {
-      provider: settings.provider,
-      gemini: settings.geminiModel,
-      ollama: settings.ollamaModel
-    });
+    if (window.electron) {
+      console.log('Overlay: Initializing settings sync');
+      // Request initial settings state to be sure
+      window.electron.ipcRenderer.invoke('get-store-value', 'settings').then((stored: AppSettings) => {
+        if (stored) {
+          console.log('Overlay: Received initial settings', stored.provider, stored.geminiModel || stored.ollamaModel);
+          setSettings(stored);
+        }
+      });
+
+      const cleanupSettings = window.electron.ipcRenderer.on('settings-updated', (newSettings: AppSettings) => {
+        console.log('Overlay: Settings updated via broadcast', newSettings.provider, newSettings.geminiModel || newSettings.ollamaModel);
+        setSettings(newSettings);
+      });
+
+      return () => {
+        cleanupSettings();
+      };
+    }
   }, []);
 
   useEffect(() => {

@@ -216,41 +216,48 @@ ipcMain.on('start-capture', async () => {
     await new Promise(resolve => setTimeout(resolve, 250));
 
     const display = screen.getPrimaryDisplay();
+    const { width, height } = display.bounds;
     const scaleFactor = display.scaleFactor;
-    const { width, height } = display.size;
+
+    console.log(`Capture: primary display bounds: ${width}x${height}, scale: ${scaleFactor}`);
 
     const sources = await desktopCapturer.getSources({ 
       types: ['screen'], 
       thumbnailSize: {
-        width: width * scaleFactor,
-        height: height * scaleFactor
+        width: Math.floor(width * scaleFactor),
+        height: Math.floor(height * scaleFactor)
       }
     });
     
-    if (sources.length === 0) throw new Error('No screen capture sources found');
+    // Find the source that matches the screen or take the first one
+    const source = sources.find(s => s.display_id === display.id.toString()) || sources[0];
     
-    const bgImage = sources[0].thumbnail.toDataURL();
-    console.log('Capture: screenshot taken, length:', bgImage.length, 'Scale:', scaleFactor);
+    if (!source) throw new Error('No screen capture sources found');
+    
+    const bgImage = source.thumbnail.toDataURL();
+    console.log('Capture: screenshot taken, length:', bgImage.length);
 
     if (selectionWindow && !selectionWindow.isDestroyed()) {
       console.log('Capture: using existing selection window');
+      selectionWindow.setBounds(display.bounds);
       selectionWindow.webContents.send('set-capture-bg', bgImage, scaleFactor);
       selectionWindow.show();
       selectionWindow.focus();
-      selectionWindow.setAlwaysOnTop(true, 'screen-saver');
     } else {
       console.log('Capture: creating new selection window');
       createSelectionWindow();
       const win = selectionWindow;
+      win?.setBounds(display.bounds);
       win?.webContents.on('did-finish-load', () => {
-        console.log('Capture: selection window finished load, sending bg');
-        win?.webContents.send('set-capture-bg', bgImage, scaleFactor);
+        console.log('Capture: selection window finished load');
+        // Small delay to ensure the component is mounted
+        setTimeout(() => {
+          win?.webContents.send('set-capture-bg', bgImage, scaleFactor);
+        }, 100);
       });
       win?.once('ready-to-show', () => {
-        console.log('Capture: selection window ready to show');
         win?.show();
         win?.focus();
-        win?.setAlwaysOnTop(true, 'screen-saver');
       });
     }
 
