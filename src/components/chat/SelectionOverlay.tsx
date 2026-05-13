@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Check, Crop } from 'lucide-react';
 
 interface SelectionOverlayProps {
-  onCapture: (rect: { x: number; y: number; width: number; height: number }) => void;
+  onCapture: (dataUrl: string) => void;
   onCancel: () => void;
 }
 
@@ -12,6 +12,29 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   const [current, setCurrent] = useState<{ x: number; y: number } | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+
+  const handleConfirm = async (rect: { x: number; y: number; width: number; height: number }) => {
+    if (!backgroundImage) return;
+    
+    try {
+      const img = new Image();
+      img.src = backgroundImage;
+      await new Promise((resolve) => (img.onload = resolve));
+
+      const canvas = document.createElement('canvas');
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext('2d');
+      
+      if (ctx) {
+        ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
+        const croppedDataUrl = canvas.toDataURL('image/png');
+        onCapture(croppedDataUrl);
+      }
+    } catch (err) {
+      console.error("Capture crop failed:", err);
+    }
+  };
 
   useEffect(() => {
     if (window.electron) {
@@ -131,7 +154,7 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
                   onClick={(e) => {
                     e.stopPropagation();
                     console.log('Capture: triggering crop', rect);
-                    onCapture(rect);
+                    handleConfirm(rect);
                   }}
                   className="px-6 py-2 bg-indigo-600 rounded-xl text-white hover:bg-indigo-500 transition-all shadow-xl shadow-indigo-500/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2"
                 >

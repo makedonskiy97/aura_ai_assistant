@@ -161,8 +161,21 @@ app.on('window-all-closed', () => {
 });
 
 // IPC Handlers
+function broadcast(channel: string, ...args: any[]) {
+  BrowserWindow.getAllWindows().forEach((win) => {
+    if (!win.isDestroyed()) {
+      win.webContents.send(channel, ...args);
+    }
+  });
+}
+
 ipcMain.handle('get-store-value', (event, key) => store.get(key));
-ipcMain.handle('set-store-value', (event, key, value) => store.set(key, value));
+ipcMain.handle('set-store-value', (event, key, value) => {
+  store.set(key, value);
+  if (key === 'settings') {
+    broadcast('settings-updated', value);
+  }
+});
 
 ipcMain.handle('capture-screen', async () => {
   const sources = await desktopCapturer.getSources({ 
@@ -210,18 +223,25 @@ ipcMain.on('start-capture', async () => {
     if (sources.length === 0) throw new Error('No screen capture sources found');
     
     const bgImage = sources[0].thumbnail.toDataURL();
-    console.log('Capture: screenshot taken');
+    console.log('Capture: screenshot taken, length:', bgImage.length);
 
     if (selectionWindow && !selectionWindow.isDestroyed()) {
+      console.log('Capture: using existing selection window');
       selectionWindow.webContents.send('set-capture-bg', bgImage);
       selectionWindow.show();
       selectionWindow.focus();
     } else {
+      console.log('Capture: creating new selection window');
       createSelectionWindow();
-      selectionWindow?.once('ready-to-show', () => {
-        selectionWindow?.webContents.send('set-capture-bg', bgImage);
-        selectionWindow?.show();
-        selectionWindow?.focus();
+      const win = selectionWindow;
+      win?.webContents.on('did-finish-load', () => {
+        console.log('Capture: selection window finished load, sending bg');
+        win?.webContents.send('set-capture-bg', bgImage);
+      });
+      win?.once('ready-to-show', () => {
+        console.log('Capture: selection window ready to show');
+        win?.show();
+        win?.focus();
       });
     }
 

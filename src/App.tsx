@@ -45,6 +45,11 @@ export default function App() {
           setSessions(storedSessions);
           if (storedSessions.length > 0) setActiveSessionId(storedSessions[0].id);
         }
+
+        // Listen for settings updates from other windows
+        window.electron.ipcRenderer.on('settings-updated', (newSettings: AppSettings) => {
+          setSettings(newSettings);
+        });
       }
     };
     loadData();
@@ -76,27 +81,17 @@ export default function App() {
   const activeSession = sessions.find(s => s.id === activeSessionId);
 
   if (isCaptureMode) {
+    console.log('App: Rendering SelectionOverlay');
     return (
       <SelectionOverlay 
-        onCapture={async (rect) => {
+        onCapture={(dataUrl) => {
+          console.log('App: Capture result generated');
           if (window.electron) {
-            const fullScreenshot = await window.electron.captureScreen();
-            const img = new Image();
-            img.src = fullScreenshot;
-            await new Promise((resolve) => (img.onload = resolve));
-
-            const canvas = document.createElement('canvas');
-            canvas.width = rect.width;
-            canvas.height = rect.height;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.drawImage(img, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height);
-              const croppedDataUrl = canvas.toDataURL('image/png');
-              window.electron.ipcRenderer.send('capture-result', croppedDataUrl);
-            }
+            window.electron.ipcRenderer.send('capture-result', dataUrl);
           }
         }}
         onCancel={() => {
+          console.log('App: Capture cancelled');
           if (window.electron) window.electron.ipcRenderer.send('close-selection');
         }}
       />
