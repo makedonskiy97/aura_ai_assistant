@@ -140,50 +140,48 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
     }
   };
 
-  useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
-      console.log('[Composer] Paste event detected');
-      const target = e.target as HTMLElement;
-      
-      // Allow standard paste if in an input/textarea that is NOT our main chat composer
-      // unless we detect an image, in which case we might want to intercept.
-      const isOurComposer = target === textareaRef.current;
-      
-      const items = e.clipboardData?.items;
-      let rendererSeesImage = false;
-      if (items) {
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            rendererSeesImage = true;
+  const handlePaste = async (e: React.ClipboardEvent | ClipboardEvent) => {
+    // Only handle if it's our textarea or window-level and no other input is focused
+    const target = e.target as HTMLElement;
+    
+    // Check for images in the clipboard data
+    const items = (e as React.ClipboardEvent).clipboardData?.items || (e as ClipboardEvent).clipboardData?.items;
+    let foundImageInEvent = false;
+
+    if (items) {
+      for (let i = 0; i < items.length; i++) {
+        if (items[i].type.indexOf('image') !== -1) {
+          console.log('[Composer] Renderer detected image in paste event items');
+          const file = items[i].getAsFile();
+          if (file) {
+            e.preventDefault(); // Stop text paste if we found an image
+            const processed = await processFile(file);
+            setFiles(prev => [...prev, processed]);
+            foundImageInEvent = true;
             break;
           }
         }
       }
+    }
 
-      if (rendererSeesImage) {
-        console.log('[Composer] Renderer detected image in clipboard items');
-        // Handle via IPC for better accuracy across platforms
+    if (!foundImageInEvent && window.electron) {
+      // IPC Fallback: Check if Main process sees an image even if Renderer is blind
+      const formats = await window.electron.getClipboardFormats();
+      const hasImageFormat = formats.some(f => 
+        f.toLowerCase().includes('image') || 
+        f.toLowerCase().includes('png') || 
+        f.toLowerCase().includes('bmp')
+      );
+
+      if (hasImageFormat) {
+        console.log('[Composer] IPC detected image format in fallback check:', formats);
+        e.preventDefault();
         handlePasteClipboard();
-        return;
       }
+    }
+  };
 
-      // FALLBACK: If renderer sees nothing, check IPC bridge (Main process has better clipboard access)
-      if (window.electron) {
-        const formats = await window.electron.getClipboardFormats();
-        const hasImageFormat = formats.some(f => 
-          f.toLowerCase().includes('image') || 
-          f.toLowerCase().includes('png') || 
-          f.toLowerCase().includes('jpeg') || 
-          f.toLowerCase().includes('bmp')
-        );
-
-        if (hasImageFormat) {
-          console.log('[Composer] IPC detected image format even though renderer was blind:', formats);
-          handlePasteClipboard();
-        }
-      }
-    };
-
+  useEffect(() => {
     window.addEventListener('paste', handlePaste);
     return () => window.removeEventListener('paste', handlePaste);
   }, []);
@@ -265,6 +263,7 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
+            onPaste={handlePaste}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

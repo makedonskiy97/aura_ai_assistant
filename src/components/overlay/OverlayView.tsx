@@ -24,27 +24,33 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
   useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
+    const handlePaste = async (e: ClipboardEvent | React.ClipboardEvent) => {
       console.log('[Overlay] Paste event detected');
-      const items = e.clipboardData?.items;
+      
+      const items = (e as React.ClipboardEvent).clipboardData?.items || (e as ClipboardEvent).clipboardData?.items;
       let rendererSeesImage = false;
       if (items) {
         for (let i = 0; i < items.length; i++) {
           if (items[i].type.indexOf('image') !== -1) {
-            rendererSeesImage = true;
-            break;
+            const file = items[i].getAsFile();
+            if (file) {
+              e.preventDefault();
+              const processed = await processFile(file);
+              setPendingAttachments(prev => [...prev, processed]);
+              rendererSeesImage = true;
+              break;
+            }
           }
         }
       }
 
-      if (rendererSeesImage) {
-        handlePasteClipboard();
-        return;
-      }
+      if (rendererSeesImage) return;
 
       if (window.electron) {
         const formats = await window.electron.getClipboardFormats();
         if (formats.some(f => f.toLowerCase().includes('image') || f.toLowerCase().includes('png'))) {
+          console.log('[Overlay] IPC fallback detected image');
+          e.preventDefault();
           handlePasteClipboard();
         }
       }
@@ -441,6 +447,11 @@ export default function OverlayView({ settings }: OverlayViewProps) {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              // We rely on the window listener for overlay inputs usually, 
+              // but direct binding is safer
+              console.log('[Overlay Input] Paste event');
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();

@@ -205,22 +205,58 @@ ipcMain.handle('read-clipboard-image', () => {
     return image.toDataURL();
   }
 
-  // 2. Fallback to specific buffers (common on Linux/Wayland or complex clipboard states)
-  const imageFormats = formats.filter(f => f.toLowerCase().includes('image') || f.toLowerCase().includes('png') || f.toLowerCase().includes('jpeg') || f.toLowerCase().includes('bmp'));
-  
-  if (imageFormats.length > 0) {
-    console.log('[Main] Found image-like formats in buffers:', imageFormats);
-    // Prioritize PNG for quality, then others
-    const targetFormat = imageFormats.find(f => f.includes('png')) || imageFormats[0];
-    try {
-      const buffer = clipboard.readBuffer(targetFormat);
-      if (buffer && buffer.length > 0) {
-        const mimeType = targetFormat.includes('/') ? targetFormat : `image/${targetFormat.toLowerCase()}`;
-        return `data:${mimeType};base64,${buffer.toString('base64')}`;
+  // 2. Fallback to exhaustive buffer detection (Crucial for Linux screenshots)
+  // Linux screenshot tools often use image/png, image/bmp, image/x-bmp, or text/uri-list (if it's a file path)
+  const imageFormatPriority = [
+    'image/png',
+    'image/jpeg',
+    'image/jpg',
+    'image/bmp',
+    'image/x-bmp',
+    'image/tiff',
+    'PNG',
+    'JPEG',
+    'BMP'
+  ];
+
+  for (const format of imageFormatPriority) {
+    const foundFormat = formats.find(f => f.toLowerCase() === format.toLowerCase());
+    if (foundFormat) {
+      try {
+        const buffer = clipboard.readBuffer(foundFormat);
+        if (buffer && buffer.length > 0) {
+          console.log(`[Main] Success: Read image buffer for format: ${foundFormat}`);
+          let mimeType = foundFormat.includes('/') ? foundFormat : `image/${foundFormat.toLowerCase()}`;
+          if (mimeType.toLowerCase() === 'image/x-bmp') mimeType = 'image/bmp';
+          return `data:${mimeType};base64,${buffer.toString('base64')}`;
+        }
+      } catch (e) {
+        console.warn(`[Main] Failed readBuffer for existing format ${foundFormat}:`, e);
       }
-    } catch (e) {
-      console.error('[Main] Buffer read failed for', targetFormat, e);
     }
+  }
+
+  // 3. Try specifically for text/uri-list containing a file path (common on some file managers)
+  if (formats.includes('text/uri-list')) {
+    const uriList = clipboard.read('text/uri-list');
+    console.log('[Main] Found text/uri-list:', uriList);
+    // If it starts with file:// and ends with image extension
+    if (uriList && (uriList.includes('.png') || uriList.includes('.jpg') || uriList.includes('.jpeg'))) {
+       // We could read the file if we wanted to, but usually Shift+Print is a buffer.
+       // However, some tools save then copy path.
+    }
+  }
+
+  // 3. Last ditch: check if any format implies an image
+  const anyImageFormat = formats.find(f => f.toLowerCase().includes('image') || f.toLowerCase().includes('png') || f.toLowerCase().includes('bmp'));
+  if (anyImageFormat) {
+    try {
+      const buffer = clipboard.readBuffer(anyImageFormat);
+      if (buffer && buffer.length > 0) {
+        console.log(`[Main] Last ditch success: Read buffer for ${anyImageFormat}`);
+        return `data:image/png;base64,${buffer.toString('base64')}`;
+      }
+    } catch (e) {}
   }
 
   console.warn('[Main] No valid image data found in clipboard');
