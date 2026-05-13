@@ -20,6 +20,20 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const lastPasteRef = useRef<{ hash: string; time: number } | null>(null);
+
+  const isDuplicatePaste = (dataUrl: string) => {
+    const now = Date.now();
+    const hash = dataUrl.substring(0, 100) + dataUrl.length;
+    if (lastPasteRef.current && 
+        lastPasteRef.current.hash === hash && 
+        now - lastPasteRef.current.time < 500) {
+      console.log('[Overlay] Duplicate paste detected and blocked');
+      return true;
+    }
+    lastPasteRef.current = { hash, time: now };
+    return false;
+  };
 
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
@@ -36,6 +50,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
             if (file) {
               e.preventDefault();
               const processed = await processFile(file);
+              if (isDuplicatePaste(processed.content)) return;
               setPendingAttachments(prev => [...prev, processed]);
               rendererSeesImage = true;
               break;
@@ -228,6 +243,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       try {
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
+          if (isDuplicatePaste(dataUrl)) return;
           const newFile: FileContext = {
             id: crypto.randomUUID(),
             name: `clipboard-${Date.now()}.png`,

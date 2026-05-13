@@ -20,6 +20,20 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
   const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'requested' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lastPasteRef = useRef<{ hash: string; time: number } | null>(null);
+
+  const isDuplicatePaste = (dataUrl: string) => {
+    const now = Date.now();
+    const hash = dataUrl.substring(0, 100) + dataUrl.length;
+    if (lastPasteRef.current && 
+        lastPasteRef.current.hash === hash && 
+        now - lastPasteRef.current.time < 500) {
+      console.log('[Composer] Duplicate paste detected and blocked');
+      return true;
+    }
+    lastPasteRef.current = { hash, time: now };
+    return false;
+  };
 
   useEffect(() => {
     if (window.electron) {
@@ -117,6 +131,7 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
         console.log('Composer: Manual paste triggered');
         const dataUrl = await window.electron.readClipboardImage();
         if (dataUrl) {
+          if (isDuplicatePaste(dataUrl)) return;
           const newFile: FileContext = {
             id: crypto.randomUUID(),
             name: `clipboard-${Date.now()}.png`,
@@ -156,6 +171,7 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
           if (file) {
             e.preventDefault(); // Stop text paste if we found an image
             const processed = await processFile(file);
+            if (isDuplicatePaste(processed.content)) return;
             setFiles(prev => [...prev, processed]);
             foundImageInEvent = true;
             break;
@@ -263,7 +279,6 @@ export default function Composer({ onSend, onStop, isStreaming, attachedFiles = 
             ref={textareaRef}
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            onPaste={handlePaste}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
