@@ -84,9 +84,11 @@ function createSelectionWindow() {
     frame: false,
     transparent: true,
     alwaysOnTop: true,
-    fullscreen: true,
     skipTaskbar: true,
     enableLargerThanScreen: true,
+    movable: false,
+    resizable: false,
+    hasShadow: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -258,6 +260,10 @@ ipcMain.on('start-capture', async () => {
       win?.once('ready-to-show', () => {
         win?.show();
         win?.focus();
+        win?.setAlwaysOnTop(true, 'screen-saver');
+        win?.setIgnoreMouseEvents(false);
+        // Signal that the interface is ready for interaction
+        broadcast('capture-ready');
       });
     }
 

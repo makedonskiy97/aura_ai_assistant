@@ -18,27 +18,7 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (window.electron) {
-      console.log('Overlay: Initializing settings sync');
-      // Request initial settings state to be sure
-      window.electron.ipcRenderer.invoke('get-store-value', 'settings').then((stored: AppSettings) => {
-        if (stored) {
-          console.log('Overlay: Received initial settings', stored.provider, stored.geminiModel || stored.ollamaModel);
-          setSettings(stored);
-        }
-      });
-
-      const cleanupSettings = window.electron.ipcRenderer.on('settings-updated', (newSettings: AppSettings) => {
-        console.log('Overlay: Settings updated via broadcast', newSettings.provider, newSettings.geminiModel || newSettings.ollamaModel);
-        setSettings(newSettings);
-      });
-
-      return () => {
-        cleanupSettings();
-      };
-    }
-  }, []);
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
 
   useEffect(() => {
     if (window.electron) {
@@ -46,22 +26,36 @@ export default function OverlayView({ settings }: OverlayViewProps) {
         console.log('Overlay: global capture received, size:', dataUrl.length);
         setPendingAttachments(prev => [...prev, dataUrl]);
         setIsCapturing(false);
+        setCapturePhase('success');
+        setTimeout(() => setCapturePhase('idle'), 2000);
+      });
+
+      const cleanupReady = window.electron.ipcRenderer.on('capture-ready', () => {
+        console.log('Overlay: capture interface ready');
+        setCapturePhase('ready');
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
         console.error('Overlay: capture error event received:', msg);
         setError(msg);
         setIsCapturing(false);
-        setTimeout(() => setError(null), 5000);
+        setCapturePhase('failed');
+        setTimeout(() => {
+          setError(null);
+          setCapturePhase('idle');
+        }, 5000);
       });
 
       const cleanupCancel = window.electron.ipcRenderer.on('on-capture-cancelled', () => {
         console.log('Overlay: capture cancelled event received');
         setIsCapturing(false);
+        setCapturePhase('cancelled');
+        setTimeout(() => setCapturePhase('idle'), 2000);
       });
 
       return () => {
         cleanupCapture();
+        cleanupReady();
         cleanupError();
         cleanupCancel();
       };
@@ -138,7 +132,22 @@ export default function OverlayView({ settings }: OverlayViewProps) {
   const handleGlobalCapture = () => {
     console.log('Overlay: global capture triggered');
     setIsCapturing(true);
+    setCapturePhase('preparing');
     window.electron?.ipcRenderer.send('start-capture');
+    
+    // Auto-timeout if selection window never appears
+    setTimeout(() => {
+      setCapturePhase(prev => {
+        if (prev === 'preparing') {
+          console.warn('Overlay: Capture initialization timed out');
+          setError('Capture interface failed to load');
+          setIsCapturing(false);
+          setTimeout(() => setError(null), 3000);
+          return 'failed';
+        }
+        return prev;
+      });
+    }, 10000);
   };
 
   const handleFileClick = () => {
@@ -176,16 +185,21 @@ export default function OverlayView({ settings }: OverlayViewProps) {
       {isCapturing && (
         <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-md flex flex-col items-center justify-center text-center animate-in fade-in duration-300 no-drag">
           <div className="relative mb-6">
-            <div className="w-16 h-16 rounded-full border-4 border-indigo-500/10 border-t-indigo-500 animate-spin" />
-            <Camera className="absolute inset-0 m-auto w-6 h-6 text-indigo-400 animate-pulse" />
+            <div className={`w-16 h-16 rounded-full border-4 ${capturePhase === 'ready' ? 'border-green-500/10 border-t-green-500' : 'border-indigo-500/10 border-t-indigo-500'} animate-spin`} />
+            <Camera className={`absolute inset-0 m-auto w-6 h-6 ${capturePhase === 'ready' ? 'text-green-400' : 'text-indigo-400'} animate-pulse`} />
           </div>
-          <h3 className="text-sm font-bold uppercase tracking-[0.3em] text-white mb-2">Preparing Screen</h3>
+          <h3 className="text-sm font-bold uppercase tracking-[0.3em] text-white mb-2">
+            {capturePhase === 'preparing' ? 'Preparing Screen' : 'Ready to Select'}
+          </h3>
           <p className="text-[10px] text-zinc-400 max-w-[200px] leading-relaxed">
-            Please wait while we prepare the selection interface...
+            {capturePhase === 'preparing' 
+              ? 'Please wait while we prepare the selection interface...'
+              : 'The selection layer is now active. Drag your mouse across the screen to capture a region.'}
           </p>
           <button 
             onClick={() => {
               setIsCapturing(false);
+              setCapturePhase('idle');
               window.electron?.ipcRenderer.send('close-selection');
             }}
             className="mt-8 px-4 py-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-[10px] font-bold uppercase tracking-widest text-zinc-400 transition-all border border-zinc-700"

@@ -60,7 +60,11 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
   }, []);
   
   const handleMouseDown = (e: React.MouseEvent) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    console.log('Capture: handleMouseDown', e.clientX, e.clientY);
+    if ((e.target as HTMLElement).closest('button')) {
+      console.log('Capture: handleMouseDown - clicked button, ignoring');
+      return;
+    }
     const x = e.clientX;
     const y = e.clientY;
     setStart({ x, y });
@@ -109,13 +113,13 @@ export default function SelectionOverlay({ onCapture, onCancel }: SelectionOverl
 
   return (
     <div 
-      className="fixed inset-0 z-[99999] cursor-crosshair overflow-hidden select-none bg-black/10"
+      className="fixed inset-0 z-[99999] cursor-crosshair overflow-hidden select-none bg-black/10 no-drag pointer-events-auto"
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
     >
       {!backgroundImage && (
-        <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center text-center">
+        <div className="absolute inset-0 bg-zinc-950 flex flex-col items-center justify-center text-center no-drag pointer-events-auto z-[99999]">
           <div className="w-12 h-12 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-4" />
           <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-indigo-400">Initializing Capture...</p>
         </div>

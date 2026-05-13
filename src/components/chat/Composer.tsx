@@ -14,6 +14,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const [content, setContent] = useState('');
   const [files, setFiles] = useState<FileContext[]>([]);
   const [isCapturing, setIsCapturing] = useState(false);
+  const [capturePhase, setCapturePhase] = useState<'idle' | 'preparing' | 'ready' | 'success' | 'failed' | 'cancelled'>('idle');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -26,18 +27,26 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
           size: 0
         }]);
         setIsCapturing(false);
+        setCapturePhase('success');
+      });
+
+      const cleanupReady = window.electron.ipcRenderer.on('capture-ready', () => {
+        setCapturePhase('ready');
       });
 
       const cleanupError = window.electron.ipcRenderer.on('capture-error', (msg: string) => {
         setIsCapturing(false);
+        setCapturePhase('failed');
       });
 
       const cleanupCancel = window.electron.ipcRenderer.on('on-capture-cancelled', () => {
         setIsCapturing(false);
+        setCapturePhase('cancelled');
       });
 
       return () => {
         cleanup();
+        cleanupReady();
         cleanupError();
         cleanupCancel();
       };
@@ -64,6 +73,7 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
   const handleGlobalCapture = () => {
     if (window.electron) {
       setIsCapturing(true);
+      setCapturePhase('preparing');
       window.electron.ipcRenderer.send('start-capture');
     }
   };
@@ -76,8 +86,10 @@ export default function Composer({ onSend, isStreaming, attachedFiles = [] }: Co
     <div className="p-6 bg-zinc-950 relative">
       {isCapturing && (
         <div className="absolute inset-0 z-50 bg-zinc-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-center animate-in fade-in duration-200">
-          <div className="w-10 h-10 rounded-full border-4 border-indigo-500/20 border-t-indigo-500 animate-spin mb-3" />
-          <p className="text-[10px] font-bold uppercase tracking-widest text-indigo-400">Capturing Desktop...</p>
+          <div className={`w-10 h-10 rounded-full border-4 ${capturePhase === 'ready' ? 'border-green-500/20 border-t-green-500' : 'border-indigo-500/20 border-t-indigo-500'} animate-spin mb-3`} />
+          <p className={`text-[10px] font-bold uppercase tracking-widest ${capturePhase === 'ready' ? 'text-green-400' : 'text-indigo-400'}`}>
+            {capturePhase === 'preparing' ? 'Preparing Desktop...' : 'Select Screen Region'}
+          </p>
         </div>
       )}
       <div className="max-w-4xl mx-auto flex flex-col gap-2">
