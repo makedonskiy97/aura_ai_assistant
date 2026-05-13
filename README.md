@@ -1,11 +1,39 @@
-<div align="center">
+# Aura AI Desktop Assistant
 
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+Aura is a dual-mode desktop AI assistant powered by Electron, React, and Gemini/Ollama.
 
-  <h1>Built with AI Studio</h2>
+## Features
+- **Dual Providers**: Seamlessly switch between Google Gemini (Cloud) and Ollama (Local).
+- **Overlay Mode**: Floating, always-on-top mini-chat for quick queries.
+- **Context Awareness**: Upload files or capture your screen for the AI to analyze.
+- **Global Shortcut**: Press `Cmd/Ctrl + Shift + Space` anywhere to toggle the overlay.
+- **Privacy First**: History and settings are stored locally on your machine.
 
-  <p>The fastest path from prompt to production with Gemini.</p>
+## Prerequisites
+- [Node.js](https://nodejs.org/) (v18+)
+- [Ollama](https://ollama.com/) (Optional, for local models)
+- Gemini API Key (Optional, for cloud models)
 
-  <a href="https://aistudio.google.com/apps">Start building</a>
+## Local Setup
+1. **Clone or Download** the project files.
+2. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+3. **Run in Development Mode**:
+   ```bash
+   npm run dev
+   ```
+   *Note: This will launch Vite and Electron simultaneously.*
 
-</div>
+## Build Instructions
+To package the app for your current platform:
+```bash
+npm run build
+```
+The installer will be generated in the `dist/` and `dist-electron/` folders.
+
+## Controls
+- **Overlay Toggle**: `Cmd/Ctrl + Shift + Space`
+- **Main Window**: Launch the app from your applications folder/start menu.
+- **Screen Capture**: Use the camera icon in the composer to attach a screenshot of your primary display.

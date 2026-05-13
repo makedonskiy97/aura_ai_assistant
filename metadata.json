@@ -1,0 +1,13 @@
+{
+  "name": "Aura AI Assistant",
+  "description": "Multi-provider desktop AI assistant with Gemini, Ollama, and screen capture.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "AI-powered desktop automation",
+    "Multi-provider chat",
+    "Screen region capture"
+  ]
+}
